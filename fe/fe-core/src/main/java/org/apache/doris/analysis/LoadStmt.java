@@ -650,7 +650,7 @@ public class LoadStmt extends DdlStmt implements NotFallbackInParser {
                 return;
             }
             checkEndpoint(endpoint);
-            checkAkSk();
+            // checkAkSk();
         }
     }
 
