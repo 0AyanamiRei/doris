@@ -3768,19 +3768,19 @@ public class FrontendServiceImpl implements FrontendService.Iface {
                     if (bePathsMap.keySet().size() < quorum) {
                         LOG.warn("auto go quorum exception");
                     }
-                    
+
                     // Apply debug point to mock rebalance in cloud mode
                     List<Long> selectedBeIds = new ArrayList<>();
                     if (Config.isCloudMode()
                             && DebugPointUtil.isEnable("FE.FrontendServiceImpl.createPartition.MockRebalance")) {
                         for (Long beId : bePathsMap.keySet()) {
                             Long selectedBeId = beId;
-                            
+
                             DebugPoint debugPoint = DebugPointUtil.getDebugPoint(
                                     "FE.FrontendServiceImpl.createPartition.MockRebalance");
                             int currentExecuteNum = debugPoint.executeNum.incrementAndGet();
                             int switchAfter = 2;
-                            
+
                             if (currentExecuteNum >= switchAfter) {
                                 List<Long> allBeIds = Env.getCurrentSystemInfo().getAllBackendIds(false);
                                 for (Long otherBeId : allBeIds) {
@@ -3796,13 +3796,13 @@ public class FrontendServiceImpl implements FrontendService.Iface {
                                 LOG.info("Debug point enabled but skip switching (execute num: {}, switch_after: {})",
                                         currentExecuteNum, switchAfter);
                             }
-                            
+
                             selectedBeIds.add(selectedBeId);
                         }
                     } else {
                         selectedBeIds.addAll(bePathsMap.keySet());
                     }
-                    
+
                     if (request.isSetWriteSingleReplica() && request.isWriteSingleReplica()) {
                         Long[] nodes = selectedBeIds.toArray(new Long[0]);
                         Random random = new SecureRandom();
