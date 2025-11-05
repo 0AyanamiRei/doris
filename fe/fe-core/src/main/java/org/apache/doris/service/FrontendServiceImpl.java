@@ -71,6 +71,7 @@ import org.apache.doris.common.ThriftServerEventProcessor;
 import org.apache.doris.common.UserException;
 import org.apache.doris.common.Version;
 import org.apache.doris.common.util.DebugPointUtil;
+import org.apache.doris.common.util.DebugPointUtil.DebugPoint;
 import org.apache.doris.common.util.Util;
 import org.apache.doris.cooldown.CooldownDelete;
 import org.apache.doris.datasource.CatalogIf;
@@ -3767,18 +3768,52 @@ public class FrontendServiceImpl implements FrontendService.Iface {
                     if (bePathsMap.keySet().size() < quorum) {
                         LOG.warn("auto go quorum exception");
                     }
+                    
+                    // Apply debug point to mock rebalance in cloud mode
+                    List<Long> selectedBeIds = new ArrayList<>();
+                    if (Config.isCloudMode()
+                            && DebugPointUtil.isEnable("FE.FrontendServiceImpl.createPartition.MockRebalance")) {
+                        for (Long beId : bePathsMap.keySet()) {
+                            Long selectedBeId = beId;
+                            
+                            DebugPoint debugPoint = DebugPointUtil.getDebugPoint(
+                                    "FE.FrontendServiceImpl.createPartition.MockRebalance");
+                            int currentExecuteNum = debugPoint.executeNum.incrementAndGet();
+                            int switchAfter = 2;
+                            
+                            if (currentExecuteNum >= switchAfter) {
+                                List<Long> allBeIds = Env.getCurrentSystemInfo().getAllBackendIds(false);
+                                for (Long otherBeId : allBeIds) {
+                                    if (!bePathsMap.keySet().contains(otherBeId)) {
+                                        selectedBeId = otherBeId;
+                                        LOG.info("Debug point enabled (execute num: {}), "
+                                                + "switch tablet {} from BE {} to BE {}",
+                                                currentExecuteNum, tablet.getId(), beId, selectedBeId);
+                                        break;
+                                    }
+                                }
+                            } else {
+                                LOG.info("Debug point enabled but skip switching (execute num: {}, switch_after: {})",
+                                        currentExecuteNum, switchAfter);
+                            }
+                            
+                            selectedBeIds.add(selectedBeId);
+                        }
+                    } else {
+                        selectedBeIds.addAll(bePathsMap.keySet());
+                    }
+                    
                     if (request.isSetWriteSingleReplica() && request.isWriteSingleReplica()) {
-                        Long[] nodes = bePathsMap.keySet().toArray(new Long[0]);
+                        Long[] nodes = selectedBeIds.toArray(new Long[0]);
                         Random random = new SecureRandom();
                         Long masterNode = nodes[random.nextInt(nodes.length)];
-                        Multimap<Long, Long> slaveBePathsMap = bePathsMap;
-                        slaveBePathsMap.removeAll(masterNode);
+                        List<Long> slaveNodes = new ArrayList<>(selectedBeIds);
+                        slaveNodes.remove(masterNode);
                         tablets.add(new TTabletLocation(tablet.getId(),
                                 Lists.newArrayList(Sets.newHashSet(masterNode))));
-                        slaveTablets.add(new TTabletLocation(tablet.getId(),
-                                Lists.newArrayList(slaveBePathsMap.keySet())));
+                        slaveTablets.add(new TTabletLocation(tablet.getId(), slaveNodes));
                     } else {
-                        tablets.add(new TTabletLocation(tablet.getId(), Lists.newArrayList(bePathsMap.keySet())));
+                        tablets.add(new TTabletLocation(tablet.getId(), selectedBeIds));
                     }
                 }
             }
