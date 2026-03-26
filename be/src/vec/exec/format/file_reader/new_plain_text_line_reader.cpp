@@ -395,13 +395,17 @@ Status NewPlainTextLineReader::read_line(const uint8_t** ptr, size_t* size, bool
                     _file_eof = true;
                 }
                 if (_file_eof || read_len == 0) {
-                    if (!stream_end) {
-                        return Status::InternalError(
-                                "Compressed file has been truncated, which is not allowed");
+                    if (_decompressor != nullptr && !stream_end) {
+                        // For compressed files, if decompressor hasn't finished,
+                        // continue to decompress remaining data in input buffer
+                        if (_input_buf_limit > _input_buf_pos) {
+                            // Still have data in input buffer, continue to decompress
+                        } else {
+                            return Status::InternalError(
+                                    "Compressed file has been truncated, which is not allowed");
+                        }
                     } else {
-                        // last loop we meet stream end,
-                        // and now we finished reading file, so we are finished
-                        // break this loop to see if there is data in buffer
+                        // Uncompressed file or decompressor finished
                         break;
                     }
                 }
