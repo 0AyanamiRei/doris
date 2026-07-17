@@ -1,0 +1,245 @@
+PipelineDistributedPlan(
+  id: 0,
+  parallel: 1,
+  fragmentJob: UnassignedGatherJob,
+  destinations: [],
+  fragment: {
+    OUTPUT EXPRS:
+      c_custkey[#55]
+      o_orderkey[#56]
+      l_linenumber[#57]
+      o_orderdate[#58]
+    PARTITION: UNPARTITIONED
+
+    HAS_COLO_PLAN_NODE: false
+
+    VRESULT SINK
+       MYSQL_PROTOCOL
+
+    8:VMERGING-EXCHANGE
+       offset: 0
+       distribute expr lists: o_orderkey[#56]
+       tuple ids: 10
+  },
+  instanceJobs: [
+    StaticAssignedJob(
+      index: 0,
+      instanceId: b8c78266642e4fcd-b295c4a6af9940a7,
+      worker: BackendWorker(id: 1784297227035, address: 127.0.0.1:9055),
+      scanSource: []
+    )
+  ]
+)
+PipelineDistributedPlan(
+  id: 1,
+  parallel: 1,
+  fragmentJob: UnassignedScanBucketOlapTableJob,
+  destinations: [
+    Exchange 8: [
+      #0: b8c78266642e4fcd-b295c4a6af9940a7
+    ]
+  ],
+  fragment: {
+    PARTITION: HASH_PARTITIONED: L_ORDERKEY[#28]
+
+    HAS_COLO_PLAN_NODE: false
+
+    STREAM DATA SINK
+      EXCHANGE ID: 08
+      UNPARTITIONED
+  IS_MERGE: true
+
+    7:VSORT(211)
+    |  order by: o_orderdate[#58] ASC, o_orderkey[#56] ASC, l_linenumber[#57] ASC
+    |  algorithm: full sort
+    |  local merge sort
+    |  merge by exchange
+    |  offset: 0
+    |  distribute expr lists:
+    |  tuple ids: 10
+    |
+    6:VHASH JOIN(209)
+    |  join op: INNER JOIN(BUCKET_SHUFFLE)[]
+    |  equal join conjunct: (L_ORDERKEY[#44] = O_ORDERKEY[#26])
+    |  cardinality=48,443
+    |  vec output tuple id: 9
+    |  output tuple id: 9
+    |  vIntermediate tuple ids: 8
+    |  hash output slot ids: 25 26 27 45
+    |  isMarkJoin: false
+    |  runtime filters: RF002[min_max] <- O_ORDERKEY[#26](22836/32768/1048576), RF003[in_or_bloom] <- O_ORDERKEY[#26](22836/32768/1048576)
+    |  final projections: C_CUSTKEY[#48], O_ORDERKEY[#49], L_LINENUMBER[#47], O_ORDERDATE[#50]
+    |  final project output tuple id: 9
+    |  distribute expr lists: L_ORDERKEY[#44]
+    |  distribute expr lists: O_ORDERKEY[#26]
+    |  tuple ids: 7 5
+    |
+    |----4:VEXCHANGE
+    |       offset: 0
+    |       distribute expr lists: O_ORDERKEY[#26]
+    |       tuple ids: 5
+    |
+    5:VOlapScanNode(105)
+       TABLE: regression_test_nereids_tpch_p0.lineitem(lineitem), PREAGGREGATION: ON
+       PREDICATES: (L_SHIPDATE[#38] > '1995-03-15')
+       partitions=1/1 (lineitem)
+       tablets=3/3, tabletList=1784297227154,1784297227156,1784297227158
+       cardinality=600572, avgRowSize=127.809235, numNodes=1
+       pushAggOp=NONE
+       runtime filters: RF002[min_max] -> L_ORDERKEY[#28], RF003[in_or_bloom] -> L_ORDERKEY[#28]
+       final projections: L_ORDERKEY[#28], L_LINENUMBER[#31]
+       final project output tuple id: 7
+       tuple ids: 6
+  },
+  instanceJobs: [
+    StaticAssignedJob(
+      index: 0,
+      instanceId: b8c78266642e4fcd-b295c4a6af9940a6,
+      worker: BackendWorker(id: 1784297227035, address: 127.0.0.1:9055),
+      scanSource: [
+        bucket 0: [
+          {
+            scanNode: OlapScanNode{id=5, tid=6, tblName=lineitem, keyRanges=, preds=((SlotRef{slotDesc=SlotDescriptor{id=38, parent=6, col=L_SHIPDATE, type=datev2, nullable=false, isAutoIncrement=false, subColPath=null, virtualColumn=null}, col=L_SHIPDATE, type=datev2, label=L_SHIPDATE, tblName=null, subColPath=null} )), limit=-1},
+            scanRanges: ScanRanges(bytes: 5105643, ranges: [
+              tablet 1784297227154, bytes: 5105643
+            ])
+          }
+        ],
+        bucket 1: [
+          {
+            scanNode: OlapScanNode{id=5, tid=6, tblName=lineitem, keyRanges=, preds=((SlotRef{slotDesc=SlotDescriptor{id=38, parent=6, col=L_SHIPDATE, type=datev2, nullable=false, isAutoIncrement=false, subColPath=null, virtualColumn=null}, col=L_SHIPDATE, type=datev2, label=L_SHIPDATE, tblName=null, subColPath=null} )), limit=-1},
+            scanRanges: ScanRanges(bytes: 5110369, ranges: [
+              tablet 1784297227156, bytes: 5110369
+            ])
+          }
+        ],
+        bucket 2: [
+          {
+            scanNode: OlapScanNode{id=5, tid=6, tblName=lineitem, keyRanges=, preds=((SlotRef{slotDesc=SlotDescriptor{id=38, parent=6, col=L_SHIPDATE, type=datev2, nullable=false, isAutoIncrement=false, subColPath=null, virtualColumn=null}, col=L_SHIPDATE, type=datev2, label=L_SHIPDATE, tblName=null, subColPath=null} )), limit=-1},
+            scanRanges: ScanRanges(bytes: 5135718, ranges: [
+              tablet 1784297227158, bytes: 5135718
+            ])
+          }
+        ]
+      ]
+    )
+  ]
+)
+PipelineDistributedPlan(
+  id: 2,
+  parallel: 1,
+  fragmentJob: UnassignedScanSingleOlapTableJob,
+  destinations: [
+    Exchange 4: [
+      #0: b8c78266642e4fcd-b295c4a6af9940a6,
+      #1: b8c78266642e4fcd-b295c4a6af9940a6,
+      #2: b8c78266642e4fcd-b295c4a6af9940a6
+    ]
+  ],
+  fragment: {
+    PARTITION: HASH_PARTITIONED: O_ORDERKEY[#9]
+
+    HAS_COLO_PLAN_NODE: false
+
+    STREAM DATA SINK
+      EXCHANGE ID: 04
+      BUCKET_SHFFULE_HASH_PARTITIONED: O_ORDERKEY[#26]
+
+    3:VHASH JOIN(206)
+    |  join op: INNER JOIN(BROADCAST)[]
+    |  equal join conjunct: (O_CUSTKEY[#19] = C_CUSTKEY[#8])
+    |  cardinality=22,836
+    |  vec output tuple id: 5
+    |  output tuple id: 5
+    |  vIntermediate tuple ids: 4
+    |  hash output slot ids: 18 20 8
+    |  isMarkJoin: false
+    |  runtime filters: RF000[min_max] <- C_CUSTKEY[#8](3149/4096/1048576), RF001[in_or_bloom] <- C_CUSTKEY[#8](3149/4096/1048576)
+    |  final projections: C_CUSTKEY[#24], O_ORDERKEY[#21], O_ORDERDATE[#23]
+    |  final project output tuple id: 5
+    |  distribute expr lists: O_ORDERKEY[#18]
+    |  distribute expr lists:
+    |  tuple ids: 3 1
+    |
+    |----1:VEXCHANGE
+    |       offset: 0
+    |       distribute expr lists: C_CUSTKEY[#8]
+    |       tuple ids: 1
+    |
+    2:VOlapScanNode(115)
+       TABLE: regression_test_nereids_tpch_p0.orders(orders), PREAGGREGATION: ON
+       PREDICATES: (O_ORDERDATE[#13] < '1995-03-15')
+       partitions=1/1 (orders)
+       tablets=3/3, tabletList=1784297227177,1784297227179,1784297227181
+       cardinality=150000, avgRowSize=123.00834, numNodes=1
+       pushAggOp=NONE
+       runtime filters: RF000[min_max] -> O_CUSTKEY[#10], RF001[in_or_bloom] -> O_CUSTKEY[#10]
+       final projections: O_ORDERKEY[#9], O_CUSTKEY[#10], O_ORDERDATE[#13]
+       final project output tuple id: 3
+       tuple ids: 2
+  },
+  instanceJobs: [
+    StaticAssignedJob(
+      index: 0,
+      instanceId: b8c78266642e4fcd-b295c4a6af9940a5,
+      worker: BackendWorker(id: 1784297227035, address: 127.0.0.1:9055),
+      scanSource: [
+        {
+          scanNode: OlapScanNode{id=2, tid=2, tblName=orders, keyRanges=, preds=((SlotRef{slotDesc=SlotDescriptor{id=13, parent=2, col=O_ORDERDATE, type=datev2, nullable=false, isAutoIncrement=false, subColPath=null, virtualColumn=null}, col=O_ORDERDATE, type=datev2, label=O_ORDERDATE, tblName=null, subColPath=null} )), limit=-1},
+          scanRanges: ScanRanges(bytes: 3690250, ranges: [
+            tablet 1784297227177, bytes: 1226064,
+            tablet 1784297227179, bytes: 1232104,
+            tablet 1784297227181, bytes: 1232082
+          ])
+        }
+      ]
+    )
+  ]
+)
+PipelineDistributedPlan(
+  id: 3,
+  parallel: 1,
+  fragmentJob: UnassignedScanSingleOlapTableJob,
+  destinations: [
+    Exchange 1: [
+      #0: b8c78266642e4fcd-b295c4a6af9940a5
+    ]
+  ],
+  fragment: {
+    PARTITION: HASH_PARTITIONED: C_CUSTKEY[#0]
+
+    HAS_COLO_PLAN_NODE: false
+
+    STREAM DATA SINK
+      EXCHANGE ID: 01
+      UNPARTITIONED
+
+    0:VOlapScanNode(127)
+       TABLE: regression_test_nereids_tpch_p0.customer(customer), PREAGGREGATION: ON
+       PREDICATES: (C_MKTSEGMENT[#6] = 'BUILDING')
+       partitions=1/1 (customer)
+       tablets=3/3, tabletList=1784297227143,1784297227145,1784297227147
+       cardinality=15000, avgRowSize=318.73935, numNodes=1
+       pushAggOp=NONE
+       final projections: C_CUSTKEY[#0]
+       final project output tuple id: 1
+       tuple ids: 0
+  },
+  instanceJobs: [
+    StaticAssignedJob(
+      index: 0,
+      instanceId: b8c78266642e4fcd-b295c4a6af9940a4,
+      worker: BackendWorker(id: 1784297227035, address: 127.0.0.1:9055),
+      scanSource: [
+        {
+          scanNode: OlapScanNode{id=0, tid=0, tblName=customer, keyRanges=, preds=((SlotRef{slotDesc=SlotDescriptor{id=6, parent=0, col=C_MKTSEGMENT, type=char(10), nullable=false, isAutoIncrement=false, subColPath=null, virtualColumn=null}, col=C_MKTSEGMENT, type=char(10), label=C_MKTSEGMENT, tblName=null, subColPath=null} )), limit=-1},
+          scanRanges: ScanRanges(bytes: 956218, ranges: [
+            tablet 1784297227143, bytes: 317117,
+            tablet 1784297227145, bytes: 314982,
+            tablet 1784297227147, bytes: 324119
+          ])
+        }
+      ]
+    )
+  ]
+)

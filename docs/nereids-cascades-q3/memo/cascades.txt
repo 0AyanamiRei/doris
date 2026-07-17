@@ -1,0 +1,1028 @@
+
+Group[@0]
+  Logical Expressions:
+    [1] id:74#0 | cost=null | estRows=600,572 | children=[] | LogicalOlapScan[25] ( qualified=internal.regression_test_nereids_tpch_p0.lineitem, alias=l, indexName=<index_not_selected>, selectedIndexId=1784297227153, preAgg=ON, operativeCol=[L_ORDERKEY#17, L_LINENUMBER#20, L_SHIPDATE#27], virtualColumns=[] )
+  Physical Expressions:
+    [1] id:106#0 | cost=600,572 [cpu=600,572, mem=0, net=0] | estRows=-1 | children=[] | PhysicalOlapScan[105]@0 ( table=lineitem, alias=l, stats=null, operativeSlots=[L_ORDERKEY#17, L_LINENUMBER#20, L_SHIPDATE#27], virtualColumns=[] )
+  Enforcers:
+    (none)
+  Chosen Expression ID: 106
+  Chosen Properties: DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+  Statistics
+    rows=600572.0
+    tupleSize=94.28022951452948
+    width=1
+    L_ORDERKEY#17 -> ndv=152214.0000, min=1.000000(1), max=600000.000000(600000), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(91008:0.0;63015:0.0;24871:0.0;69860:0.0;98115:0.0;69829:0.0;7:0.0;69797:0.0;10080:0.0;98022:0.0)
+    L_PARTKEY#18 -> ndv=19968.0000, min=1.000000(1), max=20000.000000(20000), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(10620:0.0;6140:0.0;15584:0.0;8051:0.0;10597:0.0;10715:0.0;2292:0.0;3225:0.0;19444:0.0;14422:0.0)
+    L_SUPPKEY#19 -> ndv=1005.0000, min=1.000000(1), max=1000.000000(1000), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(74:0.0;347:0.0;755:0.0;756:0.0;451:0.0;725:0.0;474:0.0;108:0.0;736:0.0;102:0.0)
+    L_LINENUMBER#20 -> ndv=7.0000, min=1.000000(1), max=7.000000(7), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1:0.25;2:0.21;3:0.18;4:0.14;5:0.11;6:0.07;7:0.04)
+    L_QUANTITY#21 -> ndv=50.0000, min=1.000000(1.00), max=50.000000(50.00), count=600572.0000, numNulls=0.0000, avgSizeByte=8.000000, hotValues=(42.000000000:0.02;36.000000000:0.02;24.000000000:0.02;47.000000000:0.02;25.000000000:0.02;23.000000000:0.02;28.000000000:0.02;9.000000000:0.02;41.000000000:0.02;16.000000000:0.02)
+    L_EXTENDEDPRICE#22 -> ndv=128773.0000, min=901.000000(901.00), max=95949.500000(95949.50), count=600572.0000, numNulls=0.0000, avgSizeByte=8.000000, hotValues=(49192.650000000:0.0;46850.400000000:0.0;41414.100000000:0.0;49729.200000000:0.0;38682.000000000:0.0;38496.480000000:0.0;42129.360000000:0.0;32434.560000000:0.0;26067.300000000:0.0;12701.360000000:0.0)
+    L_DISCOUNT#23 -> ndv=11.0000, min=0.000000(0.00), max=0.100000(0.10), count=600572.0000, numNulls=0.0000, avgSizeByte=8.000000, hotValues=(0.050000000:0.09;0.090000000:0.09;0.080000000:0.09;0.020000000:0.09;0.070000000:0.09;0.100000000:0.09;0.030000000:0.09;0.010000000:0.09;0.060000000:0.09;0.040000000:0.09)
+    L_TAX#24 -> ndv=9.0000, min=0.000000(0.00), max=0.080000(0.08), count=600572.0000, numNulls=0.0000, avgSizeByte=8.000000, hotValues=(0.040000000:0.11;0.060000000:0.11;0.020000000:0.11;0.050000000:0.11;0.000000000:0.11;0.080000000:0.11;0.030000000:0.11;0.070000000:0.11;0.010000000:0.11)
+    L_RETURNFLAG#25 -> ndv=3.0000, min=18295873486192640.000000(A), max=23080948090273792.000000(R), count=600572.0000, numNulls=0.0000, avgSizeByte=1.000000, hotValues=('N':0.51;'R':0.25;'A':0.25)
+    L_LINESTATUS#26 -> ndv=2.0000, min=19703248369745920.000000(F), max=22236523160141824.000000(O), count=600572.0000, numNulls=0.0000, avgSizeByte=1.000000, hotValues=('O':0.5;'F':0.5)
+    L_SHIPDATE#27 -> ndv=2538.0000, min=19920103000000.000000(1992-01-03), max=19981201000000.000000(1998-12-01), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1998-06-19:0.0;1994-09-06:0.0;1992-07-14:0.0;1992-06-04:0.0;1995-06-27:0.0;1995-04-04:0.0;1994-09-19:0.0;1992-10-25:0.0;1998-03-22:0.0;1998-06-20:0.0)
+    L_COMMITDATE#28 -> ndv=2473.0000, min=19920131000000.000000(1992-01-31), max=19981031000000.000000(1998-10-31), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1995-03-16:0.0;1997-10-18:0.0;1994-09-02:0.0;1998-03-16:0.0;1996-03-18:0.0;1995-12-08:0.0;1995-11-19:0.0;1996-09-24:0.0;1995-09-12:0.0;1996-04-22:0.0)
+    L_RECEIPTDATE#29 -> ndv=2561.0000, min=19920104000000.000000(1992-01-04), max=19981227000000.000000(1998-12-27), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1994-01-27:0.0;1997-07-31:0.0;1997-09-24:0.0;1992-08-12:0.0;1995-07-24:0.0;1994-10-07:0.0;1998-04-30:0.0;1996-03-18:0.0;1992-06-01:0.0;1996-12-05:0.0)
+    L_SHIPINSTRUCT#30 -> ndv=4.0000, min=18946012555330388.000000(COLLECT COD), max=23715689581789760.000000(TAKE BACK RETURN), count=600572.0000, numNulls=0.0000, avgSizeByte=11.996099, hotValues=('TAKE BACK RETURN':0.25;'NONE':0.25;'COLLECT COD':0.25;'DELIVER IN PERSON':0.25)
+    L_SHIPMODE#31 -> ndv=7.0000, min=18376490022338560.000000(AIR), max=23734424198381568.000000(TRUCK), count=600572.0000, numNulls=0.0000, avgSizeByte=4.284131, hotValues=('SHIP':0.14;'MAIL':0.14;'TRUCK':0.14;'FOB':0.14;'RAIL':0.14;'AIR':0.14;'REG AIR':0.14)
+    L_COMMENT#32 -> ndv=544230.0000, min=9100011122291560.000000( Tiresias ), max=34474553132064880.000000(zzle: pending i), count=600572.0000, numNulls=0.0000, avgSizeByte=26.512743, hotValues=(' carefully ':0.0;' furiously':0.0;' carefully':0.0;'carefully ':0.0;' furiously ':0.0;'furiously ':0.0;'ly regular ':0.0;' blithely ':0.0;'y regular ':0.0;' accounts ':0.0)
+  Lowest Plan
+    ── Entry #1 ──────────────────────────────
+    Cost: 600,572
+    Properties: ANY
+    Expression ID: 106#0
+    ── Entry #2 ────────────────────────────── BEST
+    Cost: 600,572
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+    Expression ID: 106#0
+    ── Entry #3 ──────────────────────────────
+    Cost: 600,572
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=REQUIRE, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+    Expression ID: 106#0
+  struct info map
+StructInfoMap{ groupExpressionMapByRelationId=[], infoMapByRelationId=[], groupExpressionMapByTableId=[], infoMapByTableId=[], refreshVersion={}}
+═══════════════════════════════════════════════════════════
+
+Group[@1]
+  Logical Expressions:
+    [1] id:75#1 | cost=null | estRows=322,890.73 | children=[@0] | LogicalFilter[68] ( predicates=(l_shipdate#27 > 1995-03-15) )
+  Physical Expressions:
+    [1] id:104#1 | cost=0 [cpu=0, mem=0, net=0] | estRows=-1 | children=[@0] | PhysicalFilter[103]@1 ( stats=null, predicates=(l_shipdate#27 > 1995-03-15) )
+  Enforcers:
+    (none)
+  Chosen Expression ID: 104
+  Chosen Properties: DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+  Statistics
+    rows=322890.73058637086
+    tupleSize=94.28022951452948
+    width=1
+    L_ORDERKEY#17 -> ndv=152214.0000, min=1.000000(1), max=600000.000000(600000), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(91008:0.0;63015:0.0;24871:0.0;69860:0.0;98115:0.0;69829:0.0;7:0.0;69797:0.0;10080:0.0;98022:0.0)
+    L_PARTKEY#18 -> ndv=19968.0000, min=1.000000(1), max=20000.000000(20000), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(10620:0.0;6140:0.0;15584:0.0;8051:0.0;10597:0.0;10715:0.0;2292:0.0;3225:0.0;19444:0.0;14422:0.0)
+    L_SUPPKEY#19 -> ndv=1005.0000, min=1.000000(1), max=1000.000000(1000), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(74:0.0;347:0.0;755:0.0;756:0.0;451:0.0;725:0.0;474:0.0;108:0.0;736:0.0;102:0.0)
+    L_LINENUMBER#20 -> ndv=7.0000, min=1.000000(1), max=7.000000(7), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1:0.25;2:0.21;3:0.18;4:0.14;5:0.11;6:0.07;7:0.04)
+    L_QUANTITY#21 -> ndv=50.0000, min=1.000000(1.00), max=50.000000(50.00), count=600572.0000, numNulls=0.0000, avgSizeByte=8.000000, hotValues=(42.000000000:0.02;36.000000000:0.02;24.000000000:0.02;47.000000000:0.02;25.000000000:0.02;23.000000000:0.02;28.000000000:0.02;9.000000000:0.02;41.000000000:0.02;16.000000000:0.02)
+    L_EXTENDEDPRICE#22 -> ndv=128773.0000, min=901.000000(901.00), max=95949.500000(95949.50), count=600572.0000, numNulls=0.0000, avgSizeByte=8.000000, hotValues=(49192.650000000:0.0;46850.400000000:0.0;41414.100000000:0.0;49729.200000000:0.0;38682.000000000:0.0;38496.480000000:0.0;42129.360000000:0.0;32434.560000000:0.0;26067.300000000:0.0;12701.360000000:0.0)
+    L_DISCOUNT#23 -> ndv=11.0000, min=0.000000(0.00), max=0.100000(0.10), count=600572.0000, numNulls=0.0000, avgSizeByte=8.000000, hotValues=(0.050000000:0.09;0.090000000:0.09;0.080000000:0.09;0.020000000:0.09;0.070000000:0.09;0.100000000:0.09;0.030000000:0.09;0.010000000:0.09;0.060000000:0.09;0.040000000:0.09)
+    L_TAX#24 -> ndv=9.0000, min=0.000000(0.00), max=0.080000(0.08), count=600572.0000, numNulls=0.0000, avgSizeByte=8.000000, hotValues=(0.040000000:0.11;0.060000000:0.11;0.020000000:0.11;0.050000000:0.11;0.000000000:0.11;0.080000000:0.11;0.030000000:0.11;0.070000000:0.11;0.010000000:0.11)
+    L_RETURNFLAG#25 -> ndv=3.0000, min=18295873486192640.000000(A), max=23080948090273792.000000(R), count=600572.0000, numNulls=0.0000, avgSizeByte=1.000000, hotValues=('N':0.51;'R':0.25;'A':0.25)
+    L_LINESTATUS#26 -> ndv=2.0000, min=19703248369745920.000000(F), max=22236523160141824.000000(O), count=600572.0000, numNulls=0.0000, avgSizeByte=1.000000, hotValues=('O':0.5;'F':0.5)
+    L_SHIPDATE#27 -> ndv=1364.1506, min=19950315000000.000000(1995-03-15), max=19981201000000.000000(1998-12-01), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1998-03-22:0.0;1995-04-04:0.0;1995-06-27:0.0;1998-06-20:0.0;1998-06-19:0.0)
+    L_COMMITDATE#28 -> ndv=2473.0000, min=19920131000000.000000(1992-01-31), max=19981031000000.000000(1998-10-31), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1995-03-16:0.0;1997-10-18:0.0;1994-09-02:0.0;1998-03-16:0.0;1996-03-18:0.0;1995-12-08:0.0;1995-11-19:0.0;1996-09-24:0.0;1995-09-12:0.0;1996-04-22:0.0)
+    L_RECEIPTDATE#29 -> ndv=2561.0000, min=19920104000000.000000(1992-01-04), max=19981227000000.000000(1998-12-27), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1994-01-27:0.0;1997-07-31:0.0;1997-09-24:0.0;1992-08-12:0.0;1995-07-24:0.0;1994-10-07:0.0;1998-04-30:0.0;1996-03-18:0.0;1992-06-01:0.0;1996-12-05:0.0)
+    L_SHIPINSTRUCT#30 -> ndv=4.0000, min=18946012555330388.000000(COLLECT COD), max=23715689581789760.000000(TAKE BACK RETURN), count=600572.0000, numNulls=0.0000, avgSizeByte=11.996099, hotValues=('TAKE BACK RETURN':0.25;'NONE':0.25;'COLLECT COD':0.25;'DELIVER IN PERSON':0.25)
+    L_SHIPMODE#31 -> ndv=7.0000, min=18376490022338560.000000(AIR), max=23734424198381568.000000(TRUCK), count=600572.0000, numNulls=0.0000, avgSizeByte=4.284131, hotValues=('SHIP':0.14;'MAIL':0.14;'TRUCK':0.14;'FOB':0.14;'RAIL':0.14;'AIR':0.14;'REG AIR':0.14)
+    L_COMMENT#32 -> ndv=322890.7306, min=9100011122291560.000000( Tiresias ), max=34474553132064880.000000(zzle: pending i), count=600572.0000, numNulls=0.0000, avgSizeByte=26.512743, hotValues=(' carefully ':0.0;' furiously':0.0;' carefully':0.0;'carefully ':0.0;' furiously ':0.0;'furiously ':0.0;'ly regular ':0.0;' blithely ':0.0;'y regular ':0.0;' accounts ':0.0)
+  Lowest Plan
+    ── Entry #1 ──────────────────────────────
+    Cost: 600,572
+    Properties: ANY
+    Expression ID: 104#1
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+    ── Entry #2 ────────────────────────────── BEST
+    Cost: 600,572
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+    Expression ID: 104#1
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+    ── Entry #3 ──────────────────────────────
+    Cost: 600,572
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=REQUIRE, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+    Expression ID: 104#1
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+  struct info map
+StructInfoMap{ groupExpressionMapByRelationId=[], infoMapByRelationId=[], groupExpressionMapByTableId=[], infoMapByTableId=[], refreshVersion={}}
+═══════════════════════════════════════════════════════════
+
+Group[@2]
+  Logical Expressions:
+    [1] id:76#2 | cost=null | estRows=322,890.73 | children=[@1] | LogicalProject[33] ( distinct=false, projects=[L_ORDERKEY#17, L_LINENUMBER#20] )
+  Physical Expressions:
+    [1] id:102#2 | cost=1 [cpu=1, mem=0, net=0] | estRows=-1 | children=[@1] | PhysicalProject[101]@2 ( stats=null, projects=[L_ORDERKEY#17, L_LINENUMBER#20] )
+  Enforcers:
+    [1] id:152#2 | cost=172,208.39 [cpu=107,630.24, mem=0, net=43,052.1] | estRows=-1 | children=[@2] | PhysicalDistribute[151]@2 ( stats=null, distributionSpec=DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=STORAGE_BUCKETED, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) )
+    [2] id:154#2 | cost=193,734.44 [cpu=0, mem=0, net=129,156.29] | estRows=322,890.73 | children=[@2] | PhysicalDistribute[153]@2 ( stats=null, distributionSpec=DistributionSpecReplicated )
+  Chosen Expression ID: 102
+  Chosen Properties: DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+  Statistics
+    rows=322890.73058637086
+    tupleSize=8.0
+    width=1
+    L_ORDERKEY#17 -> ndv=152214.0000, min=1.000000(1), max=600000.000000(600000), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(91008:0.0;63015:0.0;24871:0.0;69860:0.0;98115:0.0;69829:0.0;7:0.0;69797:0.0;10080:0.0;98022:0.0)
+    L_LINENUMBER#20 -> ndv=7.0000, min=1.000000(1), max=7.000000(7), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1:0.25;2:0.21;3:0.18;4:0.14;5:0.11;6:0.07;7:0.04)
+  Lowest Plan
+    ── Entry #1 ──────────────────────────────
+    Cost: 600,573
+    Properties: ANY
+    Expression ID: 102#2
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+    ── Entry #2 ────────────────────────────── BEST
+    Cost: 600,573
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+    Expression ID: 102#2
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+    ── Entry #3 ──────────────────────────────
+    Cost: 600,573
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=REQUIRE, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+    Expression ID: 102#2
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+    ── Entry #4 ──────────────────────────────
+    Cost: 772,781.39
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=STORAGE_BUCKETED, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+    Expression ID: 152#2
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+    ── Entry #5 ──────────────────────────────
+    Cost: 794,307.44
+    Properties: REPLICATED
+    Expression ID: 154#2
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+  struct info map
+StructInfoMap{ groupExpressionMapByRelationId=[], infoMapByRelationId=[], groupExpressionMapByTableId=[], infoMapByTableId=[], refreshVersion={}}
+═══════════════════════════════════════════════════════════
+
+Group[@3]
+  Logical Expressions:
+    [1] id:77#3 | cost=null | estRows=150,000 | children=[] | LogicalOlapScan[23] ( qualified=internal.regression_test_nereids_tpch_p0.orders, alias=o, indexName=<index_not_selected>, selectedIndexId=1784297227176, preAgg=ON, operativeCol=[O_ORDERKEY#8, O_CUSTKEY#9, O_ORDERDATE#12], virtualColumns=[] )
+  Physical Expressions:
+    [1] id:116#3 | cost=150,000 [cpu=150,000, mem=0, net=0] | estRows=-1 | children=[] | PhysicalOlapScan[115]@3 ( table=orders, alias=o, stats=null, operativeSlots=[O_ORDERKEY#8, O_CUSTKEY#9, O_ORDERDATE#12], virtualColumns=[] )
+  Enforcers:
+    [1] id:122#3 | cost=291,457.35 [cpu=50,000, mem=0, net=160,971.57] | estRows=150,000 | children=[@3] | PhysicalDistribute[121]@3 ( stats=null, distributionSpec=DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=EXECUTION_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) )
+  Chosen Expression ID: 116
+  Chosen Properties: DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+  Statistics
+    rows=150000.0
+    tupleSize=64.38862666666667
+    width=1
+    O_ORDERKEY#8 -> ndv=150000.0000, min=1.000000(1), max=600000.000000(600000), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(4:0.0;73540:0.0;73539:0.0;98146:0.0;98115:0.0;98086:0.0;98085:0.0;98084:0.0;98080:0.0;98022:0.0)
+    O_CUSTKEY#9 -> ndv=10057.0000, min=1.000000(1), max=14999.000000(14999), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(8761:0.0;11998:0.0;8362:0.0;4339:0.0;9454:0.0;3151:0.0;388:0.0;12163:0.0;4804:0.0;9565:0.0)
+    O_ORDERSTATUS#10 -> ndv=3.0000, min=19703248369745920.000000(F), max=22517998136852480.000000(P), count=150000.0000, numNulls=0.0000, avgSizeByte=1.000000, hotValues=('O':0.49;'F':0.49;'P':0.03)
+    O_TOTALPRICE#11 -> ndv=150000.0000, min=833.400000(833.40), max=479129.210000(479129.21), count=150000.0000, numNulls=0.0000, avgSizeByte=8.000000, hotValues=(35695.680000000:0.0;169158.310000000:0.0;176874.000000000:0.0;110707.180000000:0.0;52346.220000000:0.0;33314.400000000:0.0;98940.240000000:0.0;193987.610000000:0.0;55603.570000000:0.0;183554.770000000:0.0)
+    O_ORDERDATE#12 -> ndv=2417.0000, min=19920101000000.000000(1992-01-01), max=19980802000000.000000(1998-08-02), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1995-06-23:0.0;1997-10-02:0.0;1995-11-15:0.0;1997-05-13:0.0;1996-08-12:0.0;1996-12-15:0.0;1993-01-09:0.0;1992-02-11:0.0;1996-11-14:0.0;1998-04-21:0.0)
+    O_ORDERPRIORITY#13 -> ndv=5.0000, min=13842118334694734.000000(1-URGENT), max=14967979537530880.000000(5-LOW), count=150000.0000, numNulls=0.0000, avgSizeByte=8.388627, hotValues=('5-LOW':0.2;'2-HIGH':0.2;'1-URGENT':0.2;'4-NOT SPECIFIED':0.2;'3-MEDIUM':0.2)
+    O_CLERK#14 -> ndv=988.0000, min=18978006406734640.000000(Clerk#000000001), max=18978006406734640.000000(Clerk#000001000), count=150000.0000, numNulls=0.0000, avgSizeByte=15.000000, hotValues=('Clerk#000000878':0.0;'Clerk#000000380':0.0;'Clerk#000000342':0.0;'Clerk#000000659':0.0;'Clerk#000000715':0.0;'Clerk#000000549':0.0;'Clerk#000000720':0.0;'Clerk#000000902':0.0;'Clerk#000000946':0.0;'Clerk#000000390':0.0)
+    O_SHIPPRIORITY#15 -> ndv=1.0000, min=0.000000(0), max=0.000000(0), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(0:1.0)
+    O_COMMENT#16 -> ndv=149124.0000, min=9100011122291560.000000( Tiresias about the blithely ironic a), max=34474553131278452.000000(zzle. slyly special platele), count=150000.0000, numNulls=0.0000, avgSizeByte=48.535480, hotValues=('across the carefull':0.0;'y according to the ':0.0;' deposits. furiously ':0.0;'ly blithely special pinto b':0.0;' carefully against ':0.0;'ckly regular theodo':0.0;'ounts. furiously regular ':0.0;'s integrate blithely':0.0;'accounts. slyly furious acc':0.0;'tions. furiously regula':0.0)
+  Lowest Plan
+    ── Entry #1 ──────────────────────────────
+    Cost: 150,000
+    Properties: ANY
+    Expression ID: 116#3
+    ── Entry #2 ────────────────────────────── BEST
+    Cost: 150,000
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    Expression ID: 116#3
+    ── Entry #3 ──────────────────────────────
+    Cost: 150,000
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=REQUIRE, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    Expression ID: 116#3
+    ── Entry #4 ──────────────────────────────
+    Cost: 441,457.35
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=EXECUTION_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) Order: ([])
+    Expression ID: 122#3
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    ── Entry #5 ──────────────────────────────
+    Cost: 441,457.35
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=REQUIRE, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) Order: ([])
+    Expression ID: 122#3
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+  struct info map
+StructInfoMap{ groupExpressionMapByRelationId=[], infoMapByRelationId=[], groupExpressionMapByTableId=[], infoMapByTableId=[], refreshVersion={}}
+═══════════════════════════════════════════════════════════
+
+Group[@4]
+  Logical Expressions:
+    [1] id:78#4 | cost=null | estRows=72,910.6 | children=[@3] | LogicalFilter[67] ( predicates=(o_orderdate#12 < 1995-03-15) )
+  Physical Expressions:
+    [1] id:114#4 | cost=0 [cpu=0, mem=0, net=0] | estRows=-1 | children=[@3] | PhysicalFilter[113]@4 ( stats=null, predicates=(o_orderdate#12 < 1995-03-15) )
+  Enforcers:
+    [1] id:120#4 | cost=141,668.87 [cpu=24,303.53, mem=0, net=78,243.56] | estRows=72,910.6 | children=[@4] | PhysicalDistribute[119]@4 ( stats=null, distributionSpec=DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=EXECUTION_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) )
+  Chosen Expression ID: 114
+  Chosen Properties: DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+  Statistics
+    rows=72910.60291060292
+    tupleSize=64.38862666666667
+    width=1
+    O_ORDERKEY#8 -> ndv=72910.6029, min=1.000000(1), max=600000.000000(600000), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(4:0.0;73540:0.0;73539:0.0;98146:0.0;98115:0.0;98086:0.0;98085:0.0;98084:0.0;98080:0.0;98022:0.0)
+    O_CUSTKEY#9 -> ndv=10057.0000, min=1.000000(1), max=14999.000000(14999), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(8761:0.0;11998:0.0;8362:0.0;4339:0.0;9454:0.0;3151:0.0;388:0.0;12163:0.0;4804:0.0;9565:0.0)
+    O_ORDERSTATUS#10 -> ndv=3.0000, min=19703248369745920.000000(F), max=22517998136852480.000000(P), count=150000.0000, numNulls=0.0000, avgSizeByte=1.000000, hotValues=('O':0.49;'F':0.49;'P':0.03)
+    O_TOTALPRICE#11 -> ndv=72910.6029, min=833.400000(833.40), max=479129.210000(479129.21), count=150000.0000, numNulls=0.0000, avgSizeByte=8.000000, hotValues=(35695.680000000:0.0;169158.310000000:0.0;176874.000000000:0.0;110707.180000000:0.0;52346.220000000:0.0;33314.400000000:0.0;98940.240000000:0.0;193987.610000000:0.0;55603.570000000:0.0;183554.770000000:0.0)
+    O_ORDERDATE#12 -> ndv=1171.9721, min=19920101000000.000000(1992-01-01), max=19950315000000.000000(1995-03-15), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1993-01-09:0.0;1992-02-11:0.0)
+    O_ORDERPRIORITY#13 -> ndv=5.0000, min=13842118334694734.000000(1-URGENT), max=14967979537530880.000000(5-LOW), count=150000.0000, numNulls=0.0000, avgSizeByte=8.388627, hotValues=('5-LOW':0.2;'2-HIGH':0.2;'1-URGENT':0.2;'4-NOT SPECIFIED':0.2;'3-MEDIUM':0.2)
+    O_CLERK#14 -> ndv=988.0000, min=18978006406734640.000000(Clerk#000000001), max=18978006406734640.000000(Clerk#000001000), count=150000.0000, numNulls=0.0000, avgSizeByte=15.000000, hotValues=('Clerk#000000878':0.0;'Clerk#000000380':0.0;'Clerk#000000342':0.0;'Clerk#000000659':0.0;'Clerk#000000715':0.0;'Clerk#000000549':0.0;'Clerk#000000720':0.0;'Clerk#000000902':0.0;'Clerk#000000946':0.0;'Clerk#000000390':0.0)
+    O_SHIPPRIORITY#15 -> ndv=1.0000, min=0.000000(0), max=0.000000(0), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(0:1.0)
+    O_COMMENT#16 -> ndv=72910.6029, min=9100011122291560.000000( Tiresias about the blithely ironic a), max=34474553131278452.000000(zzle. slyly special platele), count=150000.0000, numNulls=0.0000, avgSizeByte=48.535480, hotValues=('across the carefull':0.0;'y according to the ':0.0;' deposits. furiously ':0.0;'ly blithely special pinto b':0.0;' carefully against ':0.0;'ckly regular theodo':0.0;'ounts. furiously regular ':0.0;'s integrate blithely':0.0;'accounts. slyly furious acc':0.0;'tions. furiously regula':0.0)
+  Lowest Plan
+    ── Entry #1 ──────────────────────────────
+    Cost: 150,000
+    Properties: ANY
+    Expression ID: 114#4
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    ── Entry #2 ────────────────────────────── BEST
+    Cost: 150,000
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    Expression ID: 114#4
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    ── Entry #3 ──────────────────────────────
+    Cost: 150,000
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=REQUIRE, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    Expression ID: 114#4
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    ── Entry #4 ──────────────────────────────
+    Cost: 291,668.87
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=EXECUTION_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) Order: ([])
+    Expression ID: 120#4
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    ── Entry #5 ──────────────────────────────
+    Cost: 291,668.87
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=REQUIRE, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) Order: ([])
+    Expression ID: 120#4
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+  struct info map
+StructInfoMap{ groupExpressionMapByRelationId=[], infoMapByRelationId=[], groupExpressionMapByTableId=[], infoMapByTableId=[], refreshVersion={}}
+═══════════════════════════════════════════════════════════
+
+Group[@5]
+  Logical Expressions:
+    [1] id:79#5 | cost=null | estRows=72,910.6 | children=[@4] | LogicalProject[32] ( distinct=false, projects=[O_ORDERKEY#8, O_CUSTKEY#9, O_ORDERDATE#12] )
+  Physical Expressions:
+    [1] id:112#5 | cost=1 [cpu=1, mem=0, net=0] | estRows=-1 | children=[@4] | PhysicalProject[111]@5 ( stats=null, projects=[O_ORDERKEY#8, O_CUSTKEY#9, O_ORDERDATE#12] )
+  Enforcers:
+    [1] id:118#5 | cost=46,176.72 [cpu=24,303.53, mem=0, net=14,582.12] | estRows=72,910.6 | children=[@5] | PhysicalDistribute[117]@5 ( stats=null, distributionSpec=DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=EXECUTION_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) )
+    [2] id:132#5 | cost=46,176.72 [cpu=24,303.53, mem=0, net=14,582.12] | estRows=-1 | children=[@5] | PhysicalDistribute[131]@5 ( stats=null, distributionSpec=DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=STORAGE_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) )
+    [3] id:140#5 | cost=65,619.54 [cpu=0, mem=0, net=43,746.36] | estRows=72,910.6 | children=[@5] | PhysicalDistribute[139]@5 ( stats=null, distributionSpec=DistributionSpecReplicated )
+    [4] id:173#5 | cost=46,176.72 [cpu=24,303.53, mem=0, net=14,582.12] | estRows=-1 | children=[@5] | PhysicalDistribute[172]@5 ( stats=null, distributionSpec=DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=STORAGE_BUCKETED, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) )
+  Chosen Expression ID: 112
+  Chosen Properties: DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+  Statistics
+    rows=72910.60291060292
+    tupleSize=12.0
+    width=1
+    O_ORDERKEY#8 -> ndv=72910.6029, min=1.000000(1), max=600000.000000(600000), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(4:0.0;73540:0.0;73539:0.0;98146:0.0;98115:0.0;98086:0.0;98085:0.0;98084:0.0;98080:0.0;98022:0.0)
+    O_CUSTKEY#9 -> ndv=10057.0000, min=1.000000(1), max=14999.000000(14999), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(8761:0.0;11998:0.0;8362:0.0;4339:0.0;9454:0.0;3151:0.0;388:0.0;12163:0.0;4804:0.0;9565:0.0)
+    O_ORDERDATE#12 -> ndv=1171.9721, min=19920101000000.000000(1992-01-01), max=19950315000000.000000(1995-03-15), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1993-01-09:0.0;1992-02-11:0.0)
+  Lowest Plan
+    ── Entry #1 ──────────────────────────────
+    Cost: 150,001
+    Properties: ANY
+    Expression ID: 112#5
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    ── Entry #2 ────────────────────────────── BEST
+    Cost: 150,001
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    Expression ID: 112#5
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    ── Entry #3 ──────────────────────────────
+    Cost: 150,001
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=REQUIRE, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    Expression ID: 112#5
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    ── Entry #4 ──────────────────────────────
+    Cost: 196,177.72
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=EXECUTION_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) Order: ([])
+    Expression ID: 118#5
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    ── Entry #5 ──────────────────────────────
+    Cost: 196,177.72
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=REQUIRE, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) Order: ([])
+    Expression ID: 118#5
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    ── Entry #6 ──────────────────────────────
+    Cost: 196,177.72
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=STORAGE_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) Order: ([])
+    Expression ID: 132#5
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    ── Entry #7 ──────────────────────────────
+    Cost: 196,177.72
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=STORAGE_BUCKETED, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    Expression ID: 173#5
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    ── Entry #8 ──────────────────────────────
+    Cost: 215,620.54
+    Properties: REPLICATED
+    Expression ID: 140#5
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+  struct info map
+StructInfoMap{ groupExpressionMapByRelationId=[], infoMapByRelationId=[], groupExpressionMapByTableId=[], infoMapByTableId=[], refreshVersion={}}
+═══════════════════════════════════════════════════════════
+
+Group[@6]
+  Logical Expressions:
+    [1] id:80#6 | cost=null | estRows=15,000 | children=[] | LogicalOlapScan[22] ( qualified=internal.regression_test_nereids_tpch_p0.customer, alias=c, indexName=<index_not_selected>, selectedIndexId=1784297227142, preAgg=ON, operativeCol=[C_CUSTKEY#0, C_MKTSEGMENT#6], virtualColumns=[] )
+  Physical Expressions:
+    [1] id:128#6 | cost=15,000 [cpu=15,000, mem=0, net=0] | estRows=-1 | children=[] | PhysicalOlapScan[127]@6 ( table=customer, alias=c, stats=null, operativeSlots=[C_CUSTKEY#0, C_MKTSEGMENT#6], virtualColumns=[] )
+  Enforcers:
+    (none)
+  Chosen Expression ID: 128
+  Chosen Properties: DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+  Statistics
+    rows=15000.0
+    tupleSize=87.99346666666666
+    width=1
+    C_CUSTKEY#0 -> ndv=14999.0000, min=1.000000(1), max=15000.000000(15000), count=15000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(4:0.0;3031:0.0;3030:0.0;9257:0.0;9254:0.0;9252:0.0;9249:0.0;9246:0.0;9243:0.0;9242:0.0)
+    C_NAME#1 -> ndv=15000.0000, min=18987962174762340.000000(Customer#000000001), max=18987962174762340.000000(Customer#000015000), count=15000.0000, numNulls=0.0000, avgSizeByte=18.000000, hotValues=('Customer#000000004':0.0;'Customer#000003031':0.0;'Customer#000003030':0.0;'Customer#000009257':0.0;'Customer#000009254':0.0;'Customer#000009252':0.0;'Customer#000009249':0.0;'Customer#000009246':0.0;'Customer#000009243':0.0;'Customer#000009242':0.0)
+    C_ADDRESS#2 -> ndv=14902.0000, min=9042521959968822.000000(   5L06W67,Mw8G), max=34474604171588728.000000(zzxGktzXTMKS1BxZlgQ9nqQ), count=15000.0000, numNulls=0.0000, avgSizeByte=25.236467, hotValues=('XxVSJsLAGtn':0.0;'RAqhUPR5ucG UjNQTaP7KKdnlT4Kq3yeA':0.0;'EEsyN4KThPqGea5QX k1J1wO2cmvvyuETwW5X':0.0;'5XX dCt3,yXIhB':0.0;'XPvs0bR4FWOUIuBKb DcYR1RL5J5y':0.0;'v,POLK6bxV6ijGtgv':0.0;'Qdg7tresOrdaeUx':0.0;'lHLuPbC85VhF oqU5k3G':0.0;'0KJWuSxQInTvd46hPGPW':0.0;'uLz3LhNazR,VlAdFbMv9NiFHQ2LCmztyQ':0.0)
+    C_NATIONKEY#3 -> ndv=25.0000, min=0.000000(0), max=24.000000(24), count=15000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(11:0.04;10:0.04;4:0.04;12:0.04;3:0.04;15:0.04;9:0.04;5:0.04;23:0.04;16:0.04)
+    C_PHONE#4 -> ndv=15000.0000, min=13845244515726124.000000(10-103-318-6809), max=14412592650467628.000000(34-999-121-7718), count=15000.0000, numNulls=0.0000, avgSizeByte=15.000000, hotValues=('14-128-190-5944':0.0;'19-600-312-6097':0.0;'32-495-329-7513':0.0;'30-123-161-9937':0.0;'27-139-499-6513':0.0;'15-340-703-8123':0.0;'26-152-372-9644':0.0;'11-864-493-8897':0.0;'11-769-580-5015':0.0;'32-800-423-7886':0.0)
+    C_ACCTBAL#5 -> ndv=14830.0000, min=-999.950000(-999.95), max=9999.720000(9999.72), count=15000.0000, numNulls=0.0000, avgSizeByte=8.000000, hotValues=(1240.900000000:0.0;-808.560000000:0.0;5222.830000000:0.0;8825.710000000:0.0;2152.050000000:0.0;0.970000000:0.0;9306.200000000:0.0;5568.080000000:0.0;2502.090000000:0.0;6030.940000000:0.0)
+    C_MKTSEGMENT#6 -> ndv=5.0000, min=18389694082273088.000000(AUTOMOBILE), max=21745330438098500.000000(MACHINERY), count=15000.0000, numNulls=0.0000, avgSizeByte=8.993467, hotValues=('BUILDING':0.21;'AUTOMOBILE':0.2;'HOUSEHOLD':0.2;'MACHINERY':0.2;'FURNITURE':0.19)
+    C_COMMENT#7 -> ndv=15000.0000, min=9100011122291560.000000( Tiresias among the boldly regular pinto beans wake pending), max=34474553131278432.000000(zzle. blithely regular instructions cajol), count=15000.0000, numNulls=0.0000, avgSizeByte=72.760533, hotValues=(' requests. final, regular ideas sleep final accou':0.0;'ep quickly ironic excuses. evenly ruthless requests detect carefully final somas. regular pinto b':0.0;'beans. quickly even asymptotes integ':0.0;'e special, regular pinto beans. express, u':0.0;'y fluffily regular instructions. quickly ironic pa':0.0;'fter the furiously even deposi':0.0;'eans hinder always according to the blithely final accounts. regular, unusual pinto beans are carefully unus':0.0;'s x-ray slowly about the ironic pinto beans. final foxes use slyly about the blithely regula':0.0;'ven deposits sleep about the furiously':0.0;'ly even requests wake blithely about the furiously quick requests. fluffily pending deposi':0.0)
+  Lowest Plan
+    ── Entry #1 ──────────────────────────────
+    Cost: 15,000
+    Properties: ANY
+    Expression ID: 128#6
+    ── Entry #2 ────────────────────────────── BEST
+    Cost: 15,000
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    Expression ID: 128#6
+    ── Entry #3 ──────────────────────────────
+    Cost: 15,000
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=REQUIRE, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    Expression ID: 128#6
+  struct info map
+StructInfoMap{ groupExpressionMapByRelationId=[], infoMapByRelationId=[], groupExpressionMapByTableId=[], infoMapByTableId=[], refreshVersion={}}
+═══════════════════════════════════════════════════════════
+
+Group[@7]
+  Logical Expressions:
+    [1] id:81#7 | cost=null | estRows=3,150 | children=[@6] | LogicalFilter[66] ( predicates=(c_mktsegment#6 = 'BUILDING') )
+  Physical Expressions:
+    [1] id:126#7 | cost=0 [cpu=0, mem=0, net=0] | estRows=-1 | children=[@6] | PhysicalFilter[125]@7 ( stats=null, predicates=(c_mktsegment#6 = 'BUILDING') )
+  Enforcers:
+    (none)
+  Chosen Expression ID: 126
+  Chosen Properties: DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+  Statistics
+    rows=3149.999901652336
+    tupleSize=87.0
+    width=1
+    C_CUSTKEY#0 -> ndv=3149.9999, min=1.000000(1), max=15000.000000(15000), count=15000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(4:0.0;3031:0.0;3030:0.0;9257:0.0;9254:0.0;9252:0.0;9249:0.0;9246:0.0;9243:0.0;9242:0.0)
+    C_NAME#1 -> ndv=3149.9999, min=18987962174762340.000000(Customer#000000001), max=18987962174762340.000000(Customer#000015000), count=15000.0000, numNulls=0.0000, avgSizeByte=18.000000, hotValues=('Customer#000000004':0.0;'Customer#000003031':0.0;'Customer#000003030':0.0;'Customer#000009257':0.0;'Customer#000009254':0.0;'Customer#000009252':0.0;'Customer#000009249':0.0;'Customer#000009246':0.0;'Customer#000009243':0.0;'Customer#000009242':0.0)
+    C_ADDRESS#2 -> ndv=3149.9999, min=9042521959968822.000000(   5L06W67,Mw8G), max=34474604171588728.000000(zzxGktzXTMKS1BxZlgQ9nqQ), count=15000.0000, numNulls=0.0000, avgSizeByte=25.236467, hotValues=('XxVSJsLAGtn':0.0;'RAqhUPR5ucG UjNQTaP7KKdnlT4Kq3yeA':0.0;'EEsyN4KThPqGea5QX k1J1wO2cmvvyuETwW5X':0.0;'5XX dCt3,yXIhB':0.0;'XPvs0bR4FWOUIuBKb DcYR1RL5J5y':0.0;'v,POLK6bxV6ijGtgv':0.0;'Qdg7tresOrdaeUx':0.0;'lHLuPbC85VhF oqU5k3G':0.0;'0KJWuSxQInTvd46hPGPW':0.0;'uLz3LhNazR,VlAdFbMv9NiFHQ2LCmztyQ':0.0)
+    C_NATIONKEY#3 -> ndv=25.0000, min=0.000000(0), max=24.000000(24), count=15000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(11:0.04;10:0.04;4:0.04;12:0.04;3:0.04;15:0.04;9:0.04;5:0.04;23:0.04;16:0.04)
+    C_PHONE#4 -> ndv=3149.9999, min=13845244515726124.000000(10-103-318-6809), max=14412592650467628.000000(34-999-121-7718), count=15000.0000, numNulls=0.0000, avgSizeByte=15.000000, hotValues=('14-128-190-5944':0.0;'19-600-312-6097':0.0;'32-495-329-7513':0.0;'30-123-161-9937':0.0;'27-139-499-6513':0.0;'15-340-703-8123':0.0;'26-152-372-9644':0.0;'11-864-493-8897':0.0;'11-769-580-5015':0.0;'32-800-423-7886':0.0)
+    C_ACCTBAL#5 -> ndv=3149.9999, min=-999.950000(-999.95), max=9999.720000(9999.72), count=15000.0000, numNulls=0.0000, avgSizeByte=8.000000, hotValues=(1240.900000000:0.0;-808.560000000:0.0;5222.830000000:0.0;8825.710000000:0.0;2152.050000000:0.0;0.970000000:0.0;9306.200000000:0.0;5568.080000000:0.0;2502.090000000:0.0;6030.940000000:0.0)
+    C_MKTSEGMENT#6 -> ndv=1.0000, min=18671121763420496.000000(BUILDING), max=18671121763420496.000000(BUILDING), count=0.0000, numNulls=0.0000, avgSizeByte=8.000000, hotValues=('BUILDING':100.0)
+    C_COMMENT#7 -> ndv=3149.9999, min=9100011122291560.000000( Tiresias among the boldly regular pinto beans wake pending), max=34474553131278432.000000(zzle. blithely regular instructions cajol), count=15000.0000, numNulls=0.0000, avgSizeByte=72.760533, hotValues=(' requests. final, regular ideas sleep final accou':0.0;'ep quickly ironic excuses. evenly ruthless requests detect carefully final somas. regular pinto b':0.0;'beans. quickly even asymptotes integ':0.0;'e special, regular pinto beans. express, u':0.0;'y fluffily regular instructions. quickly ironic pa':0.0;'fter the furiously even deposi':0.0;'eans hinder always according to the blithely final accounts. regular, unusual pinto beans are carefully unus':0.0;'s x-ray slowly about the ironic pinto beans. final foxes use slyly about the blithely regula':0.0;'ven deposits sleep about the furiously':0.0;'ly even requests wake blithely about the furiously quick requests. fluffily pending deposi':0.0)
+  Lowest Plan
+    ── Entry #1 ──────────────────────────────
+    Cost: 15,000
+    Properties: ANY
+    Expression ID: 126#7
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    ── Entry #2 ────────────────────────────── BEST
+    Cost: 15,000
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    Expression ID: 126#7
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    ── Entry #3 ──────────────────────────────
+    Cost: 15,000
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=REQUIRE, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    Expression ID: 126#7
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+  struct info map
+StructInfoMap{ groupExpressionMapByRelationId=[], infoMapByRelationId=[], groupExpressionMapByTableId=[], infoMapByTableId=[], refreshVersion={}}
+═══════════════════════════════════════════════════════════
+
+Group[@8]
+  Logical Expressions:
+    [1] id:82#8 | cost=null | estRows=3,150 | children=[@7] | LogicalProject[31] ( distinct=false, projects=[C_CUSTKEY#0] )
+  Physical Expressions:
+    [1] id:124#8 | cost=1 [cpu=1, mem=0, net=0] | estRows=-1 | children=[@7] | PhysicalProject[123]@8 ( stats=null, projects=[C_CUSTKEY#0] )
+  Enforcers:
+    [1] id:130#8 | cost=1,365 [cpu=1,050, mem=0, net=210] | estRows=-1 | children=[@8] | PhysicalDistribute[129]@8 ( stats=null, distributionSpec=DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=EXECUTION_BUCKETED, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) )
+    [2] id:134#8 | cost=945 [cpu=0, mem=0, net=630] | estRows=3,150 | children=[@8] | PhysicalDistribute[133]@8 ( stats=null, distributionSpec=DistributionSpecReplicated )
+  Chosen Enforcer(ID, RequiredProperties):
+      (0)134,  REPLICATED
+  Chosen Expression ID: 124
+  Chosen Properties: DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+  Statistics
+    rows=3149.999901652336
+    tupleSize=4.0
+    width=1
+    C_CUSTKEY#0 -> ndv=3149.9999, min=1.000000(1), max=15000.000000(15000), count=15000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(4:0.0;3031:0.0;3030:0.0;9257:0.0;9254:0.0;9252:0.0;9249:0.0;9246:0.0;9243:0.0;9242:0.0)
+  Lowest Plan
+    ── Entry #1 ──────────────────────────────
+    Cost: 15,001
+    Properties: ANY
+    Expression ID: 124#8
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    ── Entry #2 ────────────────────────────── BEST
+    Cost: 15,001
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    Expression ID: 124#8
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    ── Entry #3 ──────────────────────────────
+    Cost: 15,001
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=REQUIRE, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    Expression ID: 124#8
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    ── Entry #4 ────────────────────────────── BEST
+    Cost: 15,946
+    Properties: REPLICATED
+    Expression ID: 134#8
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    ── Entry #5 ──────────────────────────────
+    Cost: 16,366
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=EXECUTION_BUCKETED, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    Expression ID: 130#8
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+  struct info map
+StructInfoMap{ groupExpressionMapByRelationId=[], infoMapByRelationId=[], groupExpressionMapByTableId=[], infoMapByTableId=[], refreshVersion={}}
+═══════════════════════════════════════════════════════════
+
+Group[@9]
+  Logical Expressions:
+    [1] id:83#9 | cost=null | estRows=22,836.67 | children=[@5, @8] | LogicalJoin[70] ( type=INNER_JOIN, markJoinSlotReference=Optional.empty, hashJoinConjuncts=[(c_custkey#0 = o_custkey#9)], otherJoinConjuncts=[], markJoinConjuncts=[] )
+    [2] id:136#9 | cost=null | estRows=-1 | children=[@8, @5] | LogicalJoin[135] ( type=INNER_JOIN, markJoinSlotReference=Optional.empty, hashJoinConjuncts=[(c_custkey#0 = o_custkey#9)], otherJoinConjuncts=[], markJoinConjuncts=[] )
+  Physical Expressions:
+    [1] id:110#9 | cost=102,047.27 [cpu=98,897.27, mem=3,150, net=0] | estRows=-1 | children=[@5, @8] | PhysicalHashJoin[109]@9 ( stats=null, type=INNER_JOIN, hashCondition=[(c_custkey#0 = o_custkey#9)], otherCondition=[], markCondition=[] )
+    [2] id:138#9 | cost=171,807.88 [cpu=98,897.27, mem=72,910.6, net=0] | estRows=-1 | children=[@8, @5] | PhysicalHashJoin[137]@9 ( stats=null, type=INNER_JOIN, hashCondition=[(c_custkey#0 = o_custkey#9)], otherCondition=[], markCondition=[] )
+  Enforcers:
+    [1] id:142#9 | cost=16,746.89 [cpu=7,612.22, mem=0, net=6,089.78] | estRows=22,836.67 | children=[@9] | PhysicalDistribute[141]@9 ( stats=null, distributionSpec=DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=EXECUTION_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) )
+  Chosen Expression ID: 110
+  Chosen Properties: DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+  Statistics
+    rows=22836.67017975656
+    tupleSize=16.0
+    width=2
+    C_CUSTKEY#0 -> ndv=3149.9999, min=1.000000(1), max=15000.000000(15000), count=15000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(null)
+    O_ORDERKEY#8 -> ndv=22836.6702, min=1.000000(1), max=600000.000000(600000), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(4:0.0;73540:0.0;73539:0.0;98146:0.0;98115:0.0;98086:0.0;98085:0.0;98084:0.0;98080:0.0;98022:0.0)
+    O_CUSTKEY#9 -> ndv=3149.9999, min=1.000000(1), max=15000.000000(15000), count=15000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(null)
+    O_ORDERDATE#12 -> ndv=1171.9721, min=19920101000000.000000(1992-01-01), max=19950315000000.000000(1995-03-15), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1993-01-09:0.0;1992-02-11:0.0)
+  Lowest Plan
+    ── Entry #1 ──────────────────────────────
+    Cost: 267,994.27
+    Properties: ANY
+    Expression ID: 110#9
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+      [1] REPLICATED
+    ── Entry #2 ────────────────────────────── BEST
+    Cost: 267,994.27
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    Expression ID: 110#9
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+      [1] REPLICATED
+    ── Entry #3 ──────────────────────────────
+    Cost: 267,994.27
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=REQUIRE, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    Expression ID: 110#9
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+      [1] REPLICATED
+    ── Entry #4 ──────────────────────────────
+    Cost: 313,225.99
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0, 9]], exprIdToEquivalenceSet={0=0, 9=0} ) Order: ([])
+    Expression ID: 110#9
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=STORAGE_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) Order: ([])
+      [1] DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    ── Entry #5 ──────────────────────────────
+    Cost: 314,590.99
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=EXECUTION_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9, 0]], exprIdToEquivalenceSet={9=0, 0=0} ) Order: ([])
+    Expression ID: 110#9
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=EXECUTION_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) Order: ([])
+      [1] DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=EXECUTION_BUCKETED, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    ── Entry #6 ──────────────────────────────
+    Cost: 329,972.88
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=EXECUTION_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    Expression ID: 142#9
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0, 9]], exprIdToEquivalenceSet={0=0, 9=0} ) Order: ([])
+    ── Entry #7 ──────────────────────────────
+    Cost: 384,351.59
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=EXECUTION_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[1784297227140], equivalenceExprIds=[[0, 9]], exprIdToEquivalenceSet={0=0, 9=0} ) Order: ([])
+    Expression ID: 138#9
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=EXECUTION_BUCKETED, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+      [1] DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=EXECUTION_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) Order: ([])
+  struct info map
+StructInfoMap{ groupExpressionMapByRelationId=[], infoMapByRelationId=[], groupExpressionMapByTableId=[], infoMapByTableId=[], refreshVersion={}}
+═══════════════════════════════════════════════════════════
+
+Group[@10]
+  Logical Expressions:
+    [1] id:84#10 | cost=null | estRows=22,836.67 | children=[@9] | LogicalProject[72] ( distinct=false, projects=[C_CUSTKEY#0, O_ORDERKEY#8, O_ORDERDATE#12] )
+  Physical Expressions:
+    [1] id:108#10 | cost=1 [cpu=1, mem=0, net=0] | estRows=-1 | children=[@9] | PhysicalProject[107]@10 ( stats=null, projects=[C_CUSTKEY#0, O_ORDERKEY#8, O_ORDERDATE#12] )
+  Enforcers:
+    [1] id:144#10 | cost=14,463.22 [cpu=7,612.22, mem=0, net=4,567.33] | estRows=-1 | children=[@10] | PhysicalDistribute[143]@10 ( stats=null, distributionSpec=DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=STORAGE_BUCKETED, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) )
+    [2] id:146#10 | cost=20,553 [cpu=0, mem=0, net=13,702] | estRows=22,836.67 | children=[@10] | PhysicalDistribute[145]@10 ( stats=null, distributionSpec=DistributionSpecReplicated )
+  Chosen Enforcer(ID, RequiredProperties):
+      (0)144,  DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=STORAGE_BUCKETED, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+  Chosen Expression ID: 108
+  Chosen Properties: DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+  Statistics
+    rows=22836.67017975656
+    tupleSize=12.0
+    width=2
+    C_CUSTKEY#0 -> ndv=3149.9999, min=1.000000(1), max=15000.000000(15000), count=15000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(null)
+    O_ORDERKEY#8 -> ndv=22836.6702, min=1.000000(1), max=600000.000000(600000), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(4:0.0;73540:0.0;73539:0.0;98146:0.0;98115:0.0;98086:0.0;98085:0.0;98084:0.0;98080:0.0;98022:0.0)
+    O_ORDERDATE#12 -> ndv=1171.9721, min=19920101000000.000000(1992-01-01), max=19950315000000.000000(1995-03-15), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1993-01-09:0.0;1992-02-11:0.0)
+  Lowest Plan
+    ── Entry #1 ──────────────────────────────
+    Cost: 267,995.27
+    Properties: ANY
+    Expression ID: 108#10
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    ── Entry #2 ────────────────────────────── BEST
+    Cost: 267,995.27
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    Expression ID: 108#10
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    ── Entry #3 ──────────────────────────────
+    Cost: 267,995.27
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=REQUIRE, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    Expression ID: 108#10
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    ── Entry #4 ────────────────────────────── BEST
+    Cost: 282,458.5
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=STORAGE_BUCKETED, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    Expression ID: 144#10
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    ── Entry #5 ──────────────────────────────
+    Cost: 288,548.28
+    Properties: REPLICATED
+    Expression ID: 146#10
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+  struct info map
+StructInfoMap{ groupExpressionMapByRelationId=[], infoMapByRelationId=[], groupExpressionMapByTableId=[], infoMapByTableId=[], refreshVersion={}}
+═══════════════════════════════════════════════════════════
+
+Group[@11]
+  Logical Expressions:
+    [1] id:85#11 | cost=null | estRows=48,443.3 | children=[@2, @10] | LogicalJoin[71] ( type=INNER_JOIN, markJoinSlotReference=Optional.empty, hashJoinConjuncts=[(o_orderkey#8 = l_orderkey#17)], otherJoinConjuncts=[], markJoinConjuncts=[] )
+    [2] id:148#11 | cost=null | estRows=-1 | children=[@10, @2] | LogicalJoin[147] ( type=INNER_JOIN, markJoinSlotReference=Optional.empty, hashJoinConjuncts=[(o_orderkey#8 = l_orderkey#17)], otherJoinConjuncts=[], markJoinConjuncts=[] )
+  Physical Expressions:
+    [1] id:100#11 | cost=417,007.38 [cpu=394,170.71, mem=22,836.67, net=0] | estRows=-1 | children=[@2, @10] | PhysicalHashJoin[99]@11 ( stats=null, type=INNER_JOIN, hashCondition=[(o_orderkey#8 = l_orderkey#17)], otherCondition=[], markCondition=[] )
+    [2] id:150#11 | cost=953,433.86 [cpu=630,543.13, mem=322,890.73, net=0] | estRows=-1 | children=[@10, @2] | PhysicalHashJoin[149]@11 ( stats=null, type=INNER_JOIN, hashCondition=[(o_orderkey#8 = l_orderkey#17)], otherCondition=[], markCondition=[] )
+  Enforcers:
+    (none)
+  Chosen Expression ID: 100
+  Chosen Properties: DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([])
+  Statistics
+    rows=48443.30428542437
+    tupleSize=20.0
+    width=3
+    C_CUSTKEY#0 -> ndv=3149.9999, min=1.000000(1), max=15000.000000(15000), count=15000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(null)
+    O_ORDERKEY#8 -> ndv=22836.6702, min=1.000000(1), max=600000.000000(600000), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(98115:0.0;98022:0.0)
+    O_ORDERDATE#12 -> ndv=1171.9721, min=19920101000000.000000(1992-01-01), max=19950315000000.000000(1995-03-15), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1993-01-09:0.0;1992-02-11:0.0)
+    L_ORDERKEY#17 -> ndv=22836.6702, min=1.000000(1), max=600000.000000(600000), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(98115:0.0;98022:0.0)
+    L_LINENUMBER#20 -> ndv=7.0000, min=1.000000(1), max=7.000000(7), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1:0.25;2:0.21;3:0.18;4:0.14;5:0.11;6:0.07;7:0.04)
+  Lowest Plan
+    ── Entry #1 ──────────────────────────────
+    Cost: 1,300,038.87
+    Properties: ANY
+    Expression ID: 100#11
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+      [1] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=STORAGE_BUCKETED, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    ── Entry #2 ────────────────────────────── BEST
+    Cost: 1,300,038.87
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([])
+    Expression ID: 100#11
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+      [1] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=STORAGE_BUCKETED, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    ── Entry #3 ──────────────────────────────
+    Cost: 1,757,838.1
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8, 17]], exprIdToEquivalenceSet={8=0, 17=0} ) Order: ([])
+    Expression ID: 150#11
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+      [1] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=STORAGE_BUCKETED, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+  struct info map
+StructInfoMap{ groupExpressionMapByRelationId=[], infoMapByRelationId=[], groupExpressionMapByTableId=[], infoMapByTableId=[], refreshVersion={}}
+═══════════════════════════════════════════════════════════
+
+Group[@12]
+  Logical Expressions:
+    [1] id:86#12 | cost=null | estRows=48,443.3 | children=[@11] | LogicalProject[73] ( distinct=false, projects=[c_custkey#0, o_orderkey#8, l_linenumber#20, o_orderdate#12] )
+    [2] id:163#12 | cost=null | estRows=48,443.3 | children=[@19] | LogicalProject[73] ( distinct=false, projects=[c_custkey#0, o_orderkey#8, l_linenumber#20, o_orderdate#12] )
+  Physical Expressions:
+    [1] id:98#12 | cost=1 [cpu=1, mem=0, net=0] | estRows=-1 | children=[@11] | PhysicalProject[97]@12 ( stats=null, projects=[c_custkey#0, o_orderkey#8, l_linenumber#20, o_orderdate#12] )
+    [2] id:165#12 | cost=1 [cpu=1, mem=0, net=0] | estRows=-1 | children=[@19] | PhysicalProject[164]@12 ( stats=null, projects=[c_custkey#0, o_orderkey#8, l_linenumber#20, o_orderdate#12] )
+  Enforcers:
+    [1] id:156#12 | cost=19,377.32 [cpu=0, mem=0, net=12,918.21] | estRows=48,443.3 | children=[@12] | PhysicalDistribute[155]@12 ( stats=null, distributionSpec=DistributionSpecGather )
+  Chosen Expression ID: 98
+  Chosen Properties: DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([])
+  Statistics
+    rows=48443.30428542437
+    tupleSize=16.0
+    width=3
+    c_custkey#0 -> ndv=3149.9999, min=1.000000(1), max=15000.000000(15000), count=15000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(null)
+    o_orderkey#8 -> ndv=22836.6702, min=1.000000(1), max=600000.000000(600000), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(98115:0.0;98022:0.0)
+    o_orderdate#12 -> ndv=1171.9721, min=19920101000000.000000(1992-01-01), max=19950315000000.000000(1995-03-15), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1993-01-09:0.0;1992-02-11:0.0)
+    l_linenumber#20 -> ndv=7.0000, min=1.000000(1), max=7.000000(7), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1:0.25;2:0.21;3:0.18;4:0.14;5:0.11;6:0.07;7:0.04)
+  Lowest Plan
+    ── Entry #1 ──────────────────────────────
+    Cost: 1,300,039.87
+    Properties: ANY
+    Expression ID: 98#12
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([])
+    ── Entry #2 ────────────────────────────── BEST
+    Cost: 1,300,039.87
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([])
+    Expression ID: 98#12
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([])
+    ── Entry #3 ──────────────────────────────
+    Cost: 1,319,417.19
+    Properties: GATHER
+    Expression ID: 156#12
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([])
+  struct info map
+StructInfoMap{ groupExpressionMapByRelationId=[], infoMapByRelationId=[], groupExpressionMapByTableId=[], infoMapByTableId=[], refreshVersion={}}
+═══════════════════════════════════════════════════════════
+
+Group[@13]
+  Logical Expressions:
+    [1] id:87#13 | cost=null | estRows=48,443.3 | children=[@12] | LogicalSort[28] ( orderKeys=[o_orderdate#12 asc null first, o_orderkey#8 asc null first, l_linenumber#20 asc null first] )
+  Physical Expressions:
+    [1] id:95#13 | cost=169,551.56 [cpu=48,443.3, mem=48,443.3, net=48,443.3] | estRows=48,443.3 | children=[@15] | PhysicalQuickSort[92]@13 ( stats=null, orderKeys=[o_orderdate#12 asc null first, o_orderkey#8 asc null first, l_linenumber#20 asc null first], phase=MERGE_SORT )
+    [2] id:96#13 | cost=4,965,438.69 [cpu=48,443.3, mem=4,844,330.43, net=48,443.3] | estRows=-1 | children=[@12] | PhysicalQuickSort[93]@13 ( stats=null, orderKeys=[o_orderdate#12 asc null first, o_orderkey#8 asc null first, l_linenumber#20 asc null first], phase=GATHER_SORT )
+  Enforcers:
+    (none)
+  Chosen Expression ID: 95
+  Chosen Properties: DistributionSpecGather Order: ([o_orderdate#12 asc null first, o_orderkey#8 asc null first, l_linenumber#20 asc null first])
+  Statistics
+    rows=48443.30428542437
+    tupleSize=16.0
+    width=3
+    c_custkey#0 -> ndv=3149.9999, min=1.000000(1), max=15000.000000(15000), count=15000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(null)
+    o_orderkey#8 -> ndv=22836.6702, min=1.000000(1), max=600000.000000(600000), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(98115:0.0;98022:0.0)
+    o_orderdate#12 -> ndv=1171.9721, min=19920101000000.000000(1992-01-01), max=19950315000000.000000(1995-03-15), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1993-01-09:0.0;1992-02-11:0.0)
+    l_linenumber#20 -> ndv=7.0000, min=1.000000(1), max=7.000000(7), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1:0.25;2:0.21;3:0.18;4:0.14;5:0.11;6:0.07;7:0.04)
+  Lowest Plan
+    ── Entry #1 ──────────────────────────────
+    Cost: 1,658,520.32
+    Properties: ANY
+    Expression ID: 95#13
+    ChildrenRequires:
+      [0] GATHER
+    ── Entry #2 ────────────────────────────── BEST
+    Cost: 1,658,520.32
+    Properties: DistributionSpecGather Order: ([o_orderdate#12 asc null first, o_orderkey#8 asc null first, l_linenumber#20 asc null first])
+    Expression ID: 95#13
+    ChildrenRequires:
+      [0] GATHER
+  struct info map
+StructInfoMap{ groupExpressionMapByRelationId=[], infoMapByRelationId=[], groupExpressionMapByTableId=[], infoMapByTableId=[], refreshVersion={}}
+═══════════════════════════════════════════════════════════
+
+ROOT Group[@14]
+  Logical Expressions:
+    [1] id:88#14 | cost=null | estRows=48,443.3 | children=[@13] | LogicalResultSink[30] ( outputExprs=[c_custkey#0, o_orderkey#8, l_linenumber#20, o_orderdate#12] )
+  Physical Expressions:
+    [1] id:90#14 | cost=0 [cpu=0, mem=0, net=0] | estRows=-1 | children=[@13] | PhysicalResultSink[89] ( outputExprs=[c_custkey#0, o_orderkey#8, l_linenumber#20, o_orderdate#12] )
+  Enforcers:
+    (none)
+  Chosen Expression ID: 90
+  Chosen Properties: GATHER
+  Statistics
+    rows=48443.30428542437
+    tupleSize=16.0
+    width=3
+    c_custkey#0 -> ndv=3149.9999, min=1.000000(1), max=15000.000000(15000), count=15000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(null)
+    o_orderkey#8 -> ndv=22836.6702, min=1.000000(1), max=600000.000000(600000), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(98115:0.0;98022:0.0)
+    o_orderdate#12 -> ndv=1171.9721, min=19920101000000.000000(1992-01-01), max=19950315000000.000000(1995-03-15), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1993-01-09:0.0;1992-02-11:0.0)
+    l_linenumber#20 -> ndv=7.0000, min=1.000000(1), max=7.000000(7), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1:0.25;2:0.21;3:0.18;4:0.14;5:0.11;6:0.07;7:0.04)
+  Lowest Plan
+    ── Entry #1 ──────────────────────────────
+    Cost: 1,658,520.32
+    Properties: ANY
+    Expression ID: 90#14
+    ChildrenRequires:
+      [0] DistributionSpecGather Order: ([o_orderdate#12 asc null first, o_orderkey#8 asc null first, l_linenumber#20 asc null first])
+    ── Entry #2 ────────────────────────────── BEST
+    Cost: 1,658,520.32
+    Properties: GATHER
+    Expression ID: 90#14
+    ChildrenRequires:
+      [0] DistributionSpecGather Order: ([o_orderdate#12 asc null first, o_orderkey#8 asc null first, l_linenumber#20 asc null first])
+  struct info map
+StructInfoMap{ groupExpressionMapByRelationId=[], infoMapByRelationId=[], groupExpressionMapByTableId=[], infoMapByTableId=[], refreshVersion={}}
+═══════════════════════════════════════════════════════════
+
+Group[@15]
+  Logical Expressions:
+    (none)
+  Physical Expressions:
+    [1] id:94#15 | cost=169,551.56 [cpu=48,443.3, mem=48,443.3, net=48,443.3] | estRows=48,443.3 | children=[@12] | PhysicalQuickSort[91]@15 ( stats=null, orderKeys=[o_orderdate#12 asc null first, o_orderkey#8 asc null first, l_linenumber#20 asc null first], phase=LOCAL_SORT )
+  Enforcers:
+    [1] id:198#15 | cost=19,377.32 [cpu=0, mem=0, net=12,918.21] | estRows=48,443.3 | children=[@15] | PhysicalDistribute[197]@15 ( stats=null, distributionSpec=DistributionSpecGather )
+  Chosen Enforcer(ID, RequiredProperties):
+      (0)198,  GATHER
+  Chosen Expression ID: 94
+  Chosen Properties: DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([o_orderdate#12 asc null first, o_orderkey#8 asc null first, l_linenumber#20 asc null first])
+  Statistics
+    rows=48443.30428542437
+    tupleSize=16.0
+    width=3
+    c_custkey#0 -> ndv=3149.9999, min=1.000000(1), max=15000.000000(15000), count=15000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(null)
+    o_orderkey#8 -> ndv=22836.6702, min=1.000000(1), max=600000.000000(600000), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(98115:0.0;98022:0.0)
+    o_orderdate#12 -> ndv=1171.9721, min=19920101000000.000000(1992-01-01), max=19950315000000.000000(1995-03-15), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1993-01-09:0.0;1992-02-11:0.0)
+    l_linenumber#20 -> ndv=7.0000, min=1.000000(1), max=7.000000(7), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1:0.25;2:0.21;3:0.18;4:0.14;5:0.11;6:0.07;7:0.04)
+  Lowest Plan
+    ── Entry #1 ──────────────────────────────
+    Cost: 1,469,591.44
+    Properties: ANY
+    Expression ID: 94#15
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([])
+    ── Entry #2 ────────────────────────────── BEST
+    Cost: 1,469,591.44
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([o_orderdate#12 asc null first, o_orderkey#8 asc null first, l_linenumber#20 asc null first])
+    Expression ID: 94#15
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([])
+    ── Entry #3 ────────────────────────────── BEST
+    Cost: 1,488,968.76
+    Properties: GATHER
+    Expression ID: 198#15
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([o_orderdate#12 asc null first, o_orderkey#8 asc null first, l_linenumber#20 asc null first])
+  struct info map
+StructInfoMap{ groupExpressionMapByRelationId=[], infoMapByRelationId=[], groupExpressionMapByTableId=[], infoMapByTableId=[], refreshVersion={}}
+═══════════════════════════════════════════════════════════
+
+Group[@16]
+  Logical Expressions:
+    [1] id:159#16 | cost=null | estRows=154,664.87 | children=[@2, @5] | LogicalJoin[71] ( type=INNER_JOIN, markJoinSlotReference=Optional.empty, hashJoinConjuncts=[(o_orderkey#8 = l_orderkey#17)], otherJoinConjuncts=[], markJoinConjuncts=[] )
+    [2] id:175#16 | cost=null | estRows=-1 | children=[@5, @2] | LogicalJoin[174] ( type=INNER_JOIN, markJoinSlotReference=Optional.empty, hashJoinConjuncts=[(o_orderkey#8 = l_orderkey#17)], otherJoinConjuncts=[], markJoinConjuncts=[] )
+  Physical Expressions:
+    [1] id:171#16 | cost=623,376.8 [cpu=550,466.2, mem=72,910.6, net=0] | estRows=-1 | children=[@2, @5] | PhysicalHashJoin[170]@16 ( stats=null, type=INNER_JOIN, hashCondition=[(o_orderkey#8 = l_orderkey#17)], otherCondition=[], markCondition=[] )
+    [2] id:177#16 | cost=1,109,729.35 [cpu=786,838.62, mem=322,890.73, net=0] | estRows=-1 | children=[@5, @2] | PhysicalHashJoin[176]@16 ( stats=null, type=INNER_JOIN, hashCondition=[(o_orderkey#8 = l_orderkey#17)], otherCondition=[], markCondition=[] )
+  Enforcers:
+    [1] id:181#16 | cost=128,887.39 [cpu=51,554.96, mem=0, net=51,554.96] | estRows=154,664.87 | children=[@16] | PhysicalDistribute[180]@16 ( stats=null, distributionSpec=DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=EXECUTION_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) )
+  Statistics
+    rows=154664.86552680668
+    tupleSize=20.0
+    width=2
+    O_ORDERKEY#8 -> ndv=72910.6029, min=1.000000(1), max=600000.000000(600000), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(98115:0.0;98022:0.0)
+    O_CUSTKEY#9 -> ndv=10057.0000, min=1.000000(1), max=14999.000000(14999), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(8761:0.0;11998:0.0;8362:0.0;4339:0.0;9454:0.0;3151:0.0;388:0.0;12163:0.0;4804:0.0;9565:0.0)
+    O_ORDERDATE#12 -> ndv=1171.9721, min=19920101000000.000000(1992-01-01), max=19950315000000.000000(1995-03-15), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1993-01-09:0.0;1992-02-11:0.0)
+    L_ORDERKEY#17 -> ndv=72910.6029, min=1.000000(1), max=600000.000000(600000), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(98115:0.0;98022:0.0)
+    L_LINENUMBER#20 -> ndv=7.0000, min=1.000000(1), max=7.000000(7), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1:0.25;2:0.21;3:0.18;4:0.14;5:0.11;6:0.07;7:0.04)
+  Lowest Plan
+    ── Entry #1 ──────────────────────────────
+    Cost: 1,420,127.52
+    Properties: ANY
+    Expression ID: 171#16
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+      [1] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=STORAGE_BUCKETED, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    ── Entry #2 ──────────────────────────────
+    Cost: 1,420,127.52
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([])
+    Expression ID: 171#16
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+      [1] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=STORAGE_BUCKETED, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+    ── Entry #3 ──────────────────────────────
+    Cost: 1,549,014.91
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=EXECUTION_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) Order: ([])
+    Expression ID: 181#16
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([])
+    ── Entry #4 ──────────────────────────────
+    Cost: 1,549,014.91
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=REQUIRE, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) Order: ([])
+    Expression ID: 181#16
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([])
+    ── Entry #5 ──────────────────────────────
+    Cost: 1,796,139.32
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8, 17]], exprIdToEquivalenceSet={8=0, 17=0} ) Order: ([])
+    Expression ID: 177#16
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=NATURAL, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) Order: ([])
+      [1] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=STORAGE_BUCKETED, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17]], exprIdToEquivalenceSet={17=0} ) Order: ([])
+  struct info map
+StructInfoMap{ groupExpressionMapByRelationId=[], infoMapByRelationId=[], groupExpressionMapByTableId=[], infoMapByTableId=[], refreshVersion={}}
+═══════════════════════════════════════════════════════════
+
+Group[@17]
+  Logical Expressions:
+    [1] id:160#17 | cost=null | estRows=154,664.87 | children=[@16] | LogicalProject[157] ( distinct=false, projects=[L_LINENUMBER#20, O_ORDERKEY#8, O_CUSTKEY#9, O_ORDERDATE#12] )
+  Physical Expressions:
+    [1] id:169#17 | cost=1 [cpu=1, mem=0, net=0] | estRows=-1 | children=[@16] | PhysicalProject[168]@17 ( stats=null, projects=[L_LINENUMBER#20, O_ORDERKEY#8, O_CUSTKEY#9, O_ORDERDATE#12] )
+  Enforcers:
+    [1] id:179#17 | cost=113,420.9 [cpu=51,554.96, mem=0, net=41,243.96] | estRows=154,664.87 | children=[@17] | PhysicalDistribute[178]@17 ( stats=null, distributionSpec=DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=EXECUTION_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) )
+    [2] id:188#17 | cost=113,420.9 [cpu=51,554.96, mem=0, net=41,243.96] | estRows=-1 | children=[@17] | PhysicalDistribute[187]@17 ( stats=null, distributionSpec=DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=STORAGE_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) )
+    [3] id:196#17 | cost=185,597.84 [cpu=0, mem=0, net=123,731.89] | estRows=154,664.87 | children=[@17] | PhysicalDistribute[195]@17 ( stats=null, distributionSpec=DistributionSpecReplicated )
+  Statistics
+    rows=154664.86552680668
+    tupleSize=16.0
+    width=2
+    O_ORDERKEY#8 -> ndv=72910.6029, min=1.000000(1), max=600000.000000(600000), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(98115:0.0;98022:0.0)
+    O_CUSTKEY#9 -> ndv=10057.0000, min=1.000000(1), max=14999.000000(14999), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(8761:0.0;11998:0.0;8362:0.0;4339:0.0;9454:0.0;3151:0.0;388:0.0;12163:0.0;4804:0.0;9565:0.0)
+    O_ORDERDATE#12 -> ndv=1171.9721, min=19920101000000.000000(1992-01-01), max=19950315000000.000000(1995-03-15), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1993-01-09:0.0;1992-02-11:0.0)
+    L_LINENUMBER#20 -> ndv=7.0000, min=1.000000(1), max=7.000000(7), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1:0.25;2:0.21;3:0.18;4:0.14;5:0.11;6:0.07;7:0.04)
+  Lowest Plan
+    ── Entry #1 ──────────────────────────────
+    Cost: 1,420,128.52
+    Properties: ANY
+    Expression ID: 169#17
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([])
+    ── Entry #2 ──────────────────────────────
+    Cost: 1,420,128.52
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([])
+    Expression ID: 169#17
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([])
+    ── Entry #3 ──────────────────────────────
+    Cost: 1,533,549.42
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=EXECUTION_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) Order: ([])
+    Expression ID: 179#17
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([])
+    ── Entry #4 ──────────────────────────────
+    Cost: 1,533,549.42
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=REQUIRE, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) Order: ([])
+    Expression ID: 179#17
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([])
+    ── Entry #5 ──────────────────────────────
+    Cost: 1,533,549.42
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=STORAGE_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) Order: ([])
+    Expression ID: 188#17
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([])
+    ── Entry #6 ──────────────────────────────
+    Cost: 1,605,726.36
+    Properties: REPLICATED
+    Expression ID: 196#17
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([])
+  struct info map
+StructInfoMap{ groupExpressionMapByRelationId=[], infoMapByRelationId=[], groupExpressionMapByTableId=[], infoMapByTableId=[], refreshVersion={}}
+═══════════════════════════════════════════════════════════
+
+Group[@18]
+  Logical Expressions:
+    [1] id:161#18 | cost=null | estRows=3,150 | children=[@8] | LogicalProject[158] ( distinct=false, projects=[C_CUSTKEY#0] )
+  Physical Expressions:
+    [1] id:183#18 | cost=1 [cpu=1, mem=0, net=0] | estRows=-1 | children=[@8] | PhysicalProject[182]@18 ( stats=null, projects=[C_CUSTKEY#0] )
+  Enforcers:
+    [1] id:186#18 | cost=1,365 [cpu=1,050, mem=0, net=210] | estRows=-1 | children=[@18] | PhysicalDistribute[185]@18 ( stats=null, distributionSpec=DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=EXECUTION_BUCKETED, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) )
+    [2] id:190#18 | cost=945 [cpu=0, mem=0, net=630] | estRows=3,150 | children=[@18] | PhysicalDistribute[189]@18 ( stats=null, distributionSpec=DistributionSpecReplicated )
+  Statistics
+    rows=3149.999901652336
+    tupleSize=4.0
+    width=1
+    C_CUSTKEY#0 -> ndv=3149.9999, min=1.000000(1), max=15000.000000(15000), count=15000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(4:0.0;3031:0.0;3030:0.0;9257:0.0;9254:0.0;9252:0.0;9249:0.0;9246:0.0;9243:0.0;9242:0.0)
+  Lowest Plan
+    ── Entry #1 ──────────────────────────────
+    Cost: 15,002
+    Properties: ANY
+    Expression ID: 183#18
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    ── Entry #2 ──────────────────────────────
+    Cost: 15,002
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    Expression ID: 183#18
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    ── Entry #3 ──────────────────────────────
+    Cost: 15,002
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=REQUIRE, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    Expression ID: 183#18
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    ── Entry #4 ──────────────────────────────
+    Cost: 15,947
+    Properties: REPLICATED
+    Expression ID: 190#18
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    ── Entry #5 ──────────────────────────────
+    Cost: 16,367
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=EXECUTION_BUCKETED, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    Expression ID: 186#18
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+  struct info map
+StructInfoMap{ groupExpressionMapByRelationId=[], infoMapByRelationId=[], groupExpressionMapByTableId=[], infoMapByTableId=[], refreshVersion={}}
+═══════════════════════════════════════════════════════════
+
+Group[@19]
+  Logical Expressions:
+    [1] id:162#19 | cost=null | estRows=48,443.3 | children=[@17, @18] | LogicalJoin[70] ( type=INNER_JOIN, markJoinSlotReference=Optional.empty, hashJoinConjuncts=[(c_custkey#0 = o_custkey#9)], otherJoinConjuncts=[], markJoinConjuncts=[] )
+    [2] id:192#19 | cost=null | estRows=-1 | children=[@18, @17] | LogicalJoin[191] ( type=INNER_JOIN, markJoinSlotReference=Optional.empty, hashJoinConjuncts=[(c_custkey#0 = o_custkey#9)], otherJoinConjuncts=[], markJoinConjuncts=[] )
+  Physical Expressions:
+    [1] id:167#19 | cost=209,408.17 [cpu=206,258.17, mem=3,150, net=0] | estRows=-1 | children=[@17, @18] | PhysicalHashJoin[166]@19 ( stats=null, type=INNER_JOIN, hashCondition=[(c_custkey#0 = o_custkey#9)], otherCondition=[], markCondition=[] )
+    [2] id:194#19 | cost=474,145.57 [cpu=319,480.71, mem=154,664.87, net=0] | estRows=-1 | children=[@18, @17] | PhysicalHashJoin[193]@19 ( stats=null, type=INNER_JOIN, hashCondition=[(c_custkey#0 = o_custkey#9)], otherCondition=[], markCondition=[] )
+  Enforcers:
+    (none)
+  Statistics
+    rows=48443.30428542437
+    tupleSize=20.0
+    width=3
+    C_CUSTKEY#0 -> ndv=3149.9999, min=1.000000(1), max=15000.000000(15000), count=15000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(null)
+    O_ORDERKEY#8 -> ndv=48443.3043, min=1.000000(1), max=600000.000000(600000), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(98115:0.0;98022:0.0)
+    O_CUSTKEY#9 -> ndv=3149.9999, min=1.000000(1), max=15000.000000(15000), count=15000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(null)
+    O_ORDERDATE#12 -> ndv=1171.9721, min=19920101000000.000000(1992-01-01), max=19950315000000.000000(1995-03-15), count=150000.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1993-01-09:0.0;1992-02-11:0.0)
+    L_LINENUMBER#20 -> ndv=7.0000, min=1.000000(1), max=7.000000(7), count=600572.0000, numNulls=0.0000, avgSizeByte=4.000000, hotValues=(1:0.25;2:0.21;3:0.18;4:0.14;5:0.11;6:0.07;7:0.04)
+  Lowest Plan
+    ── Entry #1 ──────────────────────────────
+    Cost: 1,645,483.69
+    Properties: ANY
+    Expression ID: 167#19
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([])
+      [1] REPLICATED
+    ── Entry #2 ──────────────────────────────
+    Cost: 1,645,483.69
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([])
+    Expression ID: 167#19
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[17], shuffleType=NATURAL, tableId=1784297227152, selectedIndexId=1784297227153, partitionIds=[1784297227151], equivalenceExprIds=[[17, 8]], exprIdToEquivalenceSet={17=0, 8=0} ) Order: ([])
+      [1] REPLICATED
+    ── Entry #3 ──────────────────────────────
+    Cost: 1,757,959.59
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0, 9]], exprIdToEquivalenceSet={0=0, 9=0} ) Order: ([])
+    Expression ID: 167#19
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=STORAGE_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) Order: ([])
+      [1] DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=NATURAL, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    ── Entry #4 ──────────────────────────────
+    Cost: 1,759,324.59
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=EXECUTION_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9, 0]], exprIdToEquivalenceSet={9=0, 0=0} ) Order: ([])
+    Expression ID: 167#19
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=EXECUTION_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) Order: ([])
+      [1] DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=EXECUTION_BUCKETED, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+    ── Entry #5 ──────────────────────────────
+    Cost: 1,910,839.45
+    Properties: DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=EXECUTION_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[1784297227140], equivalenceExprIds=[[0, 9]], exprIdToEquivalenceSet={0=0, 9=0} ) Order: ([])
+    Expression ID: 194#19
+    ChildrenRequires:
+      [0] DistributionSpecHash ( orderedShuffledColumns=[0], shuffleType=EXECUTION_BUCKETED, tableId=1784297227141, selectedIndexId=1784297227142, partitionIds=[1784297227140], equivalenceExprIds=[[0]], exprIdToEquivalenceSet={0=0} ) Order: ([])
+      [1] DistributionSpecHash ( orderedShuffledColumns=[9], shuffleType=EXECUTION_BUCKETED, tableId=-1, selectedIndexId=-1, partitionIds=[], equivalenceExprIds=[[9]], exprIdToEquivalenceSet={9=0} ) Order: ([])
+  struct info map
+StructInfoMap{ groupExpressionMapByRelationId=[], infoMapByRelationId=[], groupExpressionMapByTableId=[], infoMapByTableId=[], refreshVersion={}}
+
+========== OPTIMIZED PLAN ==========
+PhysicalResultSink[214] ( outputExprs=[c_custkey#0, o_orderkey#8, l_linenumber#20, o_orderdate#12] )
++--PhysicalQuickSort[213]@13 ( stats=48,443.3, orderKeys=[o_orderdate#12 asc null first, o_orderkey#8 asc null first, l_linenumber#20 asc null first], phase=MERGE_SORT )
+   +--PhysicalDistribute[212]@15 ( stats=48,443.3, distributionSpec=DistributionSpecGather )
+      +--PhysicalQuickSort[211]@15 ( stats=48,443.3, orderKeys=[o_orderdate#12 asc null first, o_orderkey#8 asc null first, l_linenumber#20 asc null first], phase=LOCAL_SORT )
+         +--PhysicalProject[210]@12 ( stats=48,443.3, projects=[c_custkey#0, o_orderkey#8, l_linenumber#20, o_orderdate#12] )
+            +--PhysicalHashJoin[209]@11 ( stats=48,443.3, type=INNER_JOIN, hashCondition=[(o_orderkey#8 = l_orderkey#17)], otherCondition=[], markCondition=[], RFs=[RF2 o_orderkey#8->l_orderkey#17(ndv/size = 22836/32768) , RF3 o_orderkey#8->l_orderkey#17(ndv/size = 22836/32768) ] )
+               |--PhysicalProject[200]@2 ( stats=322,890.73, projects=[L_ORDERKEY#17, L_LINENUMBER#20] )
+               |  +--PhysicalFilter[199]@1 ( stats=322,890.73, predicates=(l_shipdate#27 > 1995-03-15) )
+               |     +--PhysicalOlapScan[105]@0 ( table=lineitem, alias=l, stats=600,572, operativeSlots=[L_ORDERKEY#17, L_LINENUMBER#20, L_SHIPDATE#27], virtualColumns=[], JRFs= RF2 RF3 )
+               +--PhysicalDistribute[208]@10 ( stats=22,836.67, distributionSpec=DistributionSpecHash ( orderedShuffledColumns=[8], shuffleType=STORAGE_BUCKETED, tableId=1784297227175, selectedIndexId=1784297227176, partitionIds=[1784297227174], equivalenceExprIds=[[8]], exprIdToEquivalenceSet={8=0} ) )
+                  +--PhysicalProject[207]@10 ( stats=22,836.67, projects=[C_CUSTKEY#0, O_ORDERKEY#8, O_ORDERDATE#12] )
+                     +--PhysicalHashJoin[206]@9 ( stats=22,836.67, type=INNER_JOIN, hashCondition=[(c_custkey#0 = o_custkey#9)], otherCondition=[], markCondition=[], RFs=[RF0 c_custkey#0->o_custkey#9(ndv/size = 3149/4096) , RF1 c_custkey#0->o_custkey#9(ndv/size = 3149/4096) ] )
+                        |--PhysicalProject[202]@5 ( stats=72,910.6, projects=[O_ORDERKEY#8, O_CUSTKEY#9, O_ORDERDATE#12] )
+                        |  +--PhysicalFilter[201]@4 ( stats=72,910.6, predicates=(o_orderdate#12 < 1995-03-15) )
+                        |     +--PhysicalOlapScan[115]@3 ( table=orders, alias=o, stats=150,000, operativeSlots=[O_ORDERKEY#8, O_CUSTKEY#9, O_ORDERDATE#12], virtualColumns=[], JRFs= RF0 RF1 )
+                        +--PhysicalDistribute[205]@8 ( stats=3,150, distributionSpec=DistributionSpecReplicated )
+                           +--PhysicalProject[204]@8 ( stats=3,150, projects=[C_CUSTKEY#0] )
+                              +--PhysicalFilter[203]@7 ( stats=3,150, predicates=(c_mktsegment#6 = 'BUILDING') )
+                                 +--PhysicalOlapScan[127]@6 ( table=customer, alias=c, stats=15,000, operativeSlots=[C_CUSTKEY#0, C_MKTSEGMENT#6], virtualColumns=[] )

@@ -1,0 +1,10 @@
+Name	Host	EditLogPort	HttpPort	QueryPort	RpcPort	ArrowFlightSqlPort	Role	IsMaster	ClusterId	Join	Alive	ReplayedJournalId	LastStartTime	LastHeartbeat	IsHelper	ErrMsg	Version	CurrentConnected	LiveSince	LocalResourceGroup
+fe_1bbbabe2_21e6_4b41_9e05_5115c33f8ad6	168.34.0.1	9015	8035	9035	9025	8075	FOLLOWER	true	741276160	true	true	888	2026-07-17 22:07:07	2026-07-17 23:10:58	true		doris-0.0.0-daf8eaa464c	Yes	NULL
+BackendId	Host	HeartbeatPort	BePort	HttpPort	BrpcPort	ArrowFlightSqlPort	LastStartTime	LastHeartbeat	Alive	SystemDecommissioned	TabletNum	DataUsedCapacity	TrashUsedCapacity	AvailCapacity	TotalCapacity	UsedPct	MaxDiskUsedPct	RemoteUsedCapacity	Tag	ErrMsg	Version	Status	HeartbeatFailureCounter	CpuCores	Memory	LiveSince	RunningTasks	NodeRole
+1784297227035	127.0.0.1	9055	9065	8045	8065	8055	2026-07-17 22:07:12	2026-07-17 23:10:58	true	false	46	22.726 MB	0.000 	2.957 TB	3.437 TB	13.98 %	13.98 %	0.000 	{"location" : "default"}		doris-0.0.0-daf8eaa464c	{"lastSuccessReportTabletsTime":"2026-07-17 23:10:19","lastStreamLoadTime":-1,"isQueryDisabled":false,"isLoadDisabled":false,"isActive":true,"isShutdown":false,"currentFragmentNum":0,"lastFragmentUpdateTime":1784301019629}	0	192	1.48 TB	2026-07-17 23:10:58	0	mix
+captured_at	database_name
+2026-07-17 23:11:02	regression_test_nereids_tpch_p0
+table_name	row_count
+customer	15000
+orders	150000
+lineitem	600572

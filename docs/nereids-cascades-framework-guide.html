@@ -410,16 +410,17 @@
         <a href="#goal">学习目标与边界</a>
         <a href="#planes">1. 八模块到五平面</a>
         <a href="#case">2. 三表实验载体</a>
-        <a href="#ir">3. Plan 与 Expression</a>
-        <a href="#rules">4. Rule 与三类变换</a>
-        <a href="#memo">5. Memo 对象模型</a>
-        <a href="#context">6. CascadesContext</a>
-        <a href="#jobs">7. Job 与 LIFO 调度</a>
-        <a href="#properties">8. 属性、成本、Enforcer</a>
-        <a href="#dphyp">9. DPHyp 如何进入 Cascades</a>
-        <a href="#distributed">10. 到分布式执行计划</a>
-        <a href="#lab">11. 实验记录手册</a>
-        <a href="#misconceptions">12. 易错边界</a>
+        <a href="#explain-guide">3. 八种 EXPLAIN 怎么读</a>
+        <a href="#ir">4. Plan 与 Expression</a>
+        <a href="#rules">5. Rule 与三类变换</a>
+        <a href="#memo">6. Memo 对象模型</a>
+        <a href="#context">7. CascadesContext</a>
+        <a href="#jobs">8. Job 与 LIFO 调度</a>
+        <a href="#properties">9. 属性、成本、Enforcer</a>
+        <a href="#dphyp">10. DPHyp 如何进入 Cascades</a>
+        <a href="#distributed">11. 到分布式执行计划</a>
+        <a href="#lab">12. 实验记录手册</a>
+        <a href="#misconceptions">13. 易错边界</a>
         <a href="#index">源码与测试索引</a>
       </nav>
       <div class="side-note">
@@ -433,17 +434,17 @@
       <header class="hero">
         <div class="eyebrow">Source-level optimizer foundations</div>
         <h1>掌握 Doris<br>Cascades 框架</h1>
-        <p class="lede">用五个平面建立全局坐标，再沿一条 TPC-H Q3 三表查询穿过 LogicalPlan、Rule、Memo、Job、物理属性、Cost、Enforcer、DPHyp 和 PlanFragment。目标不是背类名，而是能从源码解释“候选怎样产生、怎样共享、怎样被属性约束、怎样胜出”。</p>
+        <p class="lede">用五个平面建立全局坐标，再沿一条基于 TPC-H Q3 表的简化三表查询穿过 LogicalPlan、Rule、Memo、Job、物理属性、Cost、Enforcer、DPHyp 和 PlanFragment。目标不是背类名，而是能从源码解释“候选怎样产生、怎样共享、怎样被属性约束、怎样胜出”。</p>
         <div class="meta-row">
           <span class="badge">当前 HEAD 源码核对</span>
           <span class="badge">独立 HTML · 无外部依赖</span>
           <span class="badge">组件图 + 调用链 + 断点</span>
-          <span class="badge">教学 SQL 来自 Doris regression</span>
+          <span class="badge">本地真实 EXPLAIN 全量落盘</span>
         </div>
         <div class="hero-grid">
           <div class="truth"><b>等价性由规则负责</b><span>Memo 负责存储和去重，不会证明两个关系表达式在 bag/null/correlation 语义下真的等价。</span></div>
           <div class="truth"><b>Best 必须带属性下标</b><span>同一 Group 的最优解是 Best(G, required property)，不是脱离分布与顺序的单一计划。</span></div>
-          <div class="truth"><b>物理候选与属性耦合搜索</b><span>在同一个 Memo 搜索阶段，join method、child distribution、Sort/Distribute enforcer 共同进入成本比较；DPHyp 的两-Memo 边界另见第 9 节。</span></div>
+          <div class="truth"><b>物理候选与属性耦合搜索</b><span>在同一个 Memo 搜索阶段，join method、child distribution、Sort/Distribute enforcer 共同进入成本比较；DPHyp 的两-Memo 边界另见第 10 节。</span></div>
         </div>
       </header>
 
@@ -554,56 +555,230 @@
 
         <section id="case">
           <p class="section-kicker">02 · One query, many observations</p>
-          <h2>实验主线：仓库内的 TPC-H Q3</h2>
-          <p class="section-intro">Q3 同时包含三表 join、filter、aggregate、ORDER BY 和 LIMIT，恰好覆盖 logical normalization、join reorder、join implementation、distribution、两阶段 sort 与最终成本。下面 SQL 直接来自 Doris regression suite。</p>
+          <h2>实验主线：Q3 表上的简化三表查询</h2>
+          <p class="section-intro">这不是标准 TPC-H Q3。它只复用 <code>customer</code>、<code>orders</code>、<code>lineitem</code> 三张表，去掉 aggregate 和 LIMIT，保留两次等值 join、三个单表 filter、四列 project 与 ORDER BY。这样第一次阅读时，每一层变化都有一个清晰来源。</p>
           <pre><code>SELECT
-    l_orderkey,
-    sum(l_extendedprice * (1 - l_discount)) AS revenue,
-    o_orderdate,
-    o_shippriority
-FROM customer, orders, lineitem
-WHERE c_mktsegment = 'BUILDING'
-  AND c_custkey = o_custkey
-  AND l_orderkey = o_orderkey
-  AND o_orderdate &lt; DATE '1995-03-15'
-  AND l_shipdate &gt; DATE '1995-03-15'
-GROUP BY l_orderkey, o_orderdate, o_shippriority
-ORDER BY revenue DESC, o_orderdate
-LIMIT 10;</code></pre>
-          <p><a class="source" href="../regression-test/suites/nereids_tpch_p0/tpch/q3.groovy">nereids_tpch_p0/tpch/q3.groovy</a> <a class="source" href="../regression-test/suites/shape_check/tpch_sf1000/shape/q3.groovy">shape_check/.../q3.groovy</a> <a class="source" href="../regression-test/data/shape_check/tpch_sf1000/shape/q3.out">shape_check/.../q3.out</a></p>
+    c.c_custkey,
+    o.o_orderkey,
+    l.l_linenumber,
+    o.o_orderdate
+FROM customer c
+JOIN orders o
+  ON c.c_custkey = o.o_custkey
+JOIN lineitem l
+  ON o.o_orderkey = l.l_orderkey
+WHERE c.c_mktsegment = 'BUILDING'
+  AND o.o_orderdate &lt; DATE '1995-03-15'
+  AND l.l_shipdate &gt; DATE '1995-03-15'
+ORDER BY o.o_orderdate, o.o_orderkey, l.l_linenumber;</code></pre>
+          <p><a class="source" href="nereids-cascades-q3/query.sql">query.sql</a> <a class="source" href="nereids-cascades-q3/README.md">结果目录说明</a> <a class="source" href="nereids-cascades-q3/capture.sh">一键采样脚本</a> <a class="source" href="nereids-cascades-q3/environment/result.tsv">本次环境</a> <a class="source" href="nereids-cascades-q3/manifest.tsv">结果 manifest</a></p>
 
-          <h3>先建立三张“快照”，不要一上来只看最终 EXPLAIN</h3>
-          <div class="grid-3">
-            <div class="card"><h4>初始 logical tree</h4><p>parser 产出的未绑定树：关系、slot、函数仍可能是 unbound；逗号连接和 WHERE 谓词尚未呈现最终 join 结构。</p></div>
-            <div class="card"><h4>analyzed / normalized tree</h4><p>表列和类型已绑定；rewrite 完成谓词下推、project/aggregate 规范化，并为 join reorder 准备稳定结构。</p></div>
-            <div class="card"><h4>Memo + physical tree</h4><p>Group 中出现 logical alternatives、physical implementations、enforcers 和按 property 记录的 lowest plans。</p></div>
+          <h3>把一次优化过程切成四类证据</h3>
+          <div class="grid-2">
+            <div class="card"><h4>树的语义怎样稳定</h4><p><code>PARSED</code> → <code>ANALYZED</code> → <code>LOGICAL</code>。先看 relation/slot 如何绑定，再看 filter pushdown、column pruning 和 hash condition 归类。</p></div>
+            <div class="card"><h4>规则怎样改树</h4><p><code>LOGICAL PLAN PROCESS</code> 是 rule-by-rule 的 before/after 事件，不是一棵最终树；用它回答“是哪条规则造成了变化”。</p></div>
+            <div class="card"><h4>候选怎样搜索</h4><p><code>MEMO</code> 展示 Group、logical/physical expressions、enforcers、statistics 和按 required property 保存的 lowest plans。</p></div>
+            <div class="card"><h4>赢家怎样执行</h4><p><code>SHAPE</code> 先看紧凑骨架，<code>PHYSICAL</code> 再看 stats/cost/property，<code>DISTRIBUTED</code> 最后看 fragments、exchanges、workers。</p></div>
           </div>
           <pre><code>SET enable_nereids_planner = true;
 SET enable_fallback_to_original_planner = false;
+SET parallel_pipeline_task_num = 1; -- 仅让教学输出更短
 
-EXPLAIN PARSED PLAN     &lt;Q3&gt;;
-EXPLAIN ANALYZED PLAN   &lt;Q3&gt;;
-EXPLAIN LOGICAL PLAN    &lt;Q3&gt;;
-EXPLAIN LOGICAL PLAN PROCESS &lt;Q3&gt;;
-EXPLAIN MEMO PLAN       &lt;Q3&gt;;
-EXPLAIN PHYSICAL PLAN   &lt;Q3&gt;;
-EXPLAIN DISTRIBUTED PLAN &lt;Q3&gt;;</code></pre>
-          <div class="callout"><strong>为什么选它：</strong>当前 shape fixture 的关键骨架是 <code>PhysicalTopN[MERGE_SORT] → PhysicalDistribute[GATHER] → PhysicalTopN[LOCAL_SORT]</code>，下方有两个 <code>PhysicalHashJoin</code>；一个 colocated，一个 broadcast。这不是抽象示意，而是仓库维护的可回归计划形状。</div>
+EXPLAIN PARSED PLAN            &lt;QUERY&gt;;
+EXPLAIN ANALYZED PLAN          &lt;QUERY&gt;;
+EXPLAIN LOGICAL PLAN           &lt;QUERY&gt;;
+EXPLAIN LOGICAL PLAN PROCESS   &lt;QUERY&gt;;
+EXPLAIN MEMO PLAN              &lt;QUERY&gt;;
+EXPLAIN SHAPE PLAN             &lt;QUERY&gt;;
+EXPLAIN PHYSICAL PLAN          &lt;QUERY&gt;;
+EXPLAIN DISTRIBUTED PLAN       &lt;QUERY&gt;;</code></pre>
+          <div class="callout"><strong>本次真实结果：</strong>FE/BE 均为 <code>doris-0.0.0-daf8eaa464c</code>，数据库行为 customer 15,000、orders 150,000、lineitem 600,572。最终使用两阶段 <code>PhysicalQuickSort</code>、一个 bucket-shuffle Hash Join 和一个 broadcast Hash Join。这里没有 LIMIT，所以不是 PhysicalTopN。</div>
           <pre><code>PhysicalResultSink
-└─ PhysicalTopN[MERGE_SORT]
+└─ PhysicalQuickSort[MERGE_SORT]
    └─ PhysicalDistribute[GATHER]
-      └─ PhysicalTopN[LOCAL_SORT]
-         └─ hashAgg[GLOBAL]
-            └─ hashJoin(lineitem ⋈ (orders ⋈ customer), colocated)
-               ├─ lineitem
-               └─ hashJoin(orders ⋈ customer, broadcast)
-                  ├─ orders
-                  └─ customer</code></pre>
+      └─ PhysicalQuickSort[LOCAL_SORT]
+         └─ hashJoin(lineitem ⋈ (orders ⋈ customer), bucket shuffle)
+            ├─ lineitem
+            └─ hashJoin(orders ⋈ customer, broadcast)
+               ├─ orders
+               └─ customer</code></pre>
           <p class="tiny">计划形状依赖表分桶、统计、session variable 和集群条件；实验目标是解释当前候选为何胜出，而不是把这一棵树当成所有环境的固定答案。</p>
         </section>
 
+        <section id="explain-guide">
+          <p class="section-kicker">03 · How to read EXPLAIN</p>
+          <h2>第一次看 EXPLAIN：八份结果分别在回答什么</h2>
+          <p class="section-intro">不要把所有输出当成同一种“计划”。前三份是逻辑树的不同成熟度，PROCESS 是变化记录，Memo 是共享搜索空间，Shape/Physical 是赢家的两种视图，Distributed 才进入 fragment instance。下面每一节都链接本次完整原始结果。</p>
+
+          <h3>先学会识别树上的符号</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>符号</th><th>含义</th><th>第一次阅读时怎么处理</th></tr></thead>
+              <tbody>
+                <tr><td><code>+--</code>、<code>|--</code> 与缩进</td><td>parent/child 结构；数据从叶子向根流动</td><td>先从最底层 scan 向上读数据加工，再从根向下读 required order/distribution。</td></tr>
+                <tr><td><code>LogicalXxx</code> / <code>PhysicalXxx</code></td><td>“算什么”与“怎样执行”</td><td>LogicalJoin 不是已选择 Hash Join；看到 PhysicalHashJoin 才是 implementation 已确定。</td></tr>
+                <tr><td><code>[213]</code></td><td>本次 plan node ID</td><td>只用于在同一份输出中定位；重新执行会变化，不代表 cost 或执行顺序。</td></tr>
+                <tr><td><code>slot#12</code></td><td>绑定后的 expression/slot identity</td><td>同名列靠 ExprId 区分；不要把 <code>#12</code> 当列序号。</td></tr>
+                <tr><td><code>@13</code></td><td>该 physical node 对应的 Memo Group ID</td><td>用它从 PhysicalPlan 回查 Memo；ID 只在本次优化中有意义。</td></tr>
+                <tr><td><code>stats=48,443.3</code></td><td>优化器估算的输出行数</td><td>它是 cost 输入，不是运行时实际行数。</td></tr>
+                <tr><td><code>DistributionSpec*</code></td><td>输出或要求的分布属性</td><td>重点找 GATHER、REPLICATED、HASH 以及是谁插入 PhysicalDistribute。</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <details open><summary>1. PARSED PLAN：SQL 被 parser 读成了什么</summary><div>
+            <div class="grid-2">
+              <div>
+                <pre><code>UnboundResultSink
++--LogicalSort
+   +--LogicalProject
+      +--LogicalFilter
+         +--LogicalJoin
+            |--LogicalJoin
+            |  |--... UnboundRelation(customer)
+            |  +--... UnboundRelation(orders)
+            +--... UnboundRelation(lineitem)</code></pre>
+              </div>
+              <div class="card"><h4>按这个顺序看</h4><ol><li>先数三个 <code>UnboundRelation</code>，确认 parser 没丢表。</li><li>看两层 <code>LogicalJoin</code> 是否与 SQL 语法结构一致。</li><li>看 WHERE 仍集中在一个 <code>LogicalFilter</code>。</li><li>看最上方 Project 与 Sort 是否保留了投影列和排序键。</li></ol></div>
+            </div>
+            <p><strong>关键识别：</strong><code>UnboundRelation</code> 和输出中的 <code>'c.c_custkey</code> 表示名字尚未绑定；等值条件此时仍在 <code>otherJoinConjuncts</code>，<code>hashJoinConjuncts=[]</code>。这不意味着最终不能用 Hash Join，只表示 analysis/rewrite 尚未完成谓词分类。</p>
+            <p><strong>不要从这里判断：</strong>表统计、索引选择、join order 优劣、broadcast/shuffle 或最终物理算法。</p>
+            <p><a class="source" href="nereids-cascades-q3/parsed/result.txt">parsed/result.txt · 15 行完整结果</a></p>
+          </div></details>
+
+          <details open><summary>2. ANALYZED PLAN：名字、类型与 ExprId 怎样绑定</summary><div>
+            <pre><code>LogicalOlapScan (
+  qualified=internal.regression_test_nereids_tpch_p0.customer,
+  selectedIndexId=... )
+
+LogicalResultSink (
+  outputExprs=[c_custkey#0, o_orderkey#8,
+               l_linenumber#20, o_orderdate#12] )</code></pre>
+            <ul>
+              <li><code>UnboundRelation</code> 已变成带完整 catalog/database/table 名的 <code>LogicalOlapScan</code>，说明 binding 成功。</li>
+              <li>所有列都获得稳定的 ExprId，例如 <code>o_orderkey#8</code>；join/filter/sort 对同一列的引用现在可以精确关联。</li>
+              <li>alias 仍以 <code>LogicalSubQueryAlias</code> 节点存在；三个 filter 仍集中在上层，join 等值条件仍显示在 <code>otherJoinConjuncts</code>。</li>
+            </ul>
+            <p><strong>和 PARSED 的核心差异：</strong>语法骨架基本不变，但“字符串名字”已经变成 catalog 对象、类型化 Slot 与 ExprId。Node ID 从 20/19 等变成 30/28 是重新建树的副作用，不要逐个对号。</p>
+            <p><a class="source" href="nereids-cascades-q3/analyzed/result.txt">analyzed/result.txt · 12 行完整结果</a></p>
+          </div></details>
+
+          <details open><summary>3. LOGICAL PLAN：normalization/rewrite 最终收敛成什么树</summary><div>
+            <pre><code>LogicalJoin hashJoinConjuncts=[o_orderkey#8 = l_orderkey#17]
+|--Project(L_ORDERKEY, L_LINENUMBER)
+|  +--Filter(l_shipdate &gt; ...)
+|     +--OlapScan(lineitem, operativeCol=[...])
++--LogicalJoin hashJoinConjuncts=[c_custkey#0 = o_custkey#9]
+   |--Project(O_ORDERKEY, O_CUSTKEY, O_ORDERDATE)
+   |  +--Filter(o_orderdate &lt; ...) → orders scan
+   +--Project(C_CUSTKEY)
+      +--Filter(c_mktsegment = ...) → customer scan</code></pre>
+            <ul>
+              <li><strong>Filter pushdown：</strong>原来一个三条件 Filter 被拆到各自 scan 上方。</li>
+              <li><strong>Column pruning：</strong>lineitem 只保留 orderkey、linenumber、shipdate；其他宽列不再向上传递。</li>
+              <li><strong>Hash condition 归类：</strong>两个等值条件进入 <code>hashJoinConjuncts</code>。</li>
+              <li><strong>逻辑顺序变化：</strong>SQL 写的是 <code>(customer ⋈ orders) ⋈ lineitem</code>；当前最终逻辑树展示 <code>lineitem ⋈ (orders ⋈ customer)</code>。不要用 SQL 文本顺序推断最终 join tree。</li>
+            </ul>
+            <p><strong>仍然没有什么：</strong>这里还没有 PhysicalHashJoin、broadcast、bucket shuffle、最终 cost 或 fragment。它是进入 Memo/优化搜索的逻辑输入，不是执行计划。</p>
+            <p><a class="source" href="nereids-cascades-q3/logical/result.txt">logical/result.txt · 15 行完整结果</a></p>
+          </div></details>
+
+          <details><summary>4. LOGICAL PLAN PROCESS：是哪条 rule 改了树</summary><div>
+            <p>这份文件有 1,088 行，不应该从头顺读。每条记录是 <strong>RuleType + before tree + after tree</strong>；输出中的 <code>**</code> 标记本次变化关注的节点，<code>states</code> 是 rewrite 状态。</p>
+            <div class="grid-2">
+              <div class="card"><h4>建议搜索的规则</h4><pre><code>LOGICAL_SUB_QUERY_ALIAS_TO_LOGICAL_PROJECT
+INFER_FILTER_NOT_NULL
+PUSH_DOWN_FILTER_THROUGH_JOIN
+PUSH_DOWN_FILTER_THROUGH_PROJECT
+FIND_HASH_CONDITION_FOR_JOIN
+COLUMN_PRUNING
+OPERATIVE_COLUMN_DERIVE
+INIT_JOIN_ORDER</code></pre></div>
+              <div class="card"><h4>一次只回答一个问题</h4><ol><li>搜索 rule 名找到事件起点。</li><li>在 before 中找 <code>**</code> 节点。</li><li>在同一 TSV row 的 after 中找替换结果。</li><li>回到最终 LOGICAL PLAN 确认变化是否保留下来。</li></ol></div>
+            </div>
+            <div class="callout warn"><strong>最容易误读：</strong><code>EXPLAIN LOGICAL PLAN PROCESS</code> 不是“normalization 后的 tree”。它是过程日志；最终树应看上一份 <code>EXPLAIN LOGICAL PLAN</code>。</div>
+            <p><a class="source" href="nereids-cascades-q3/logical-process/result.tsv">logical-process/result.tsv · 1,088 行完整过程</a></p>
+          </div></details>
+
+          <details open><summary>5. MEMO PLAN：Group、候选、属性和 cost 怎样放在一起</summary><div>
+            <p>Memo 不是树，不能从第一行一路缩进读到底。先选一个 Group 局部阅读，再追 children Group；最后看 ROOT Group。</p>
+            <pre><code>Group[@13]
+  Logical Expressions:  LogicalSort ... children=[@12]
+  Physical Expressions: MERGE_SORT / GATHER_SORT candidates
+  Enforcers:             ...
+  Chosen Properties:     Gather + Order(...)
+  Statistics:            rows=48,443.3
+  Lowest Plan:
+    Cost: ... Properties: ... Expression ID: ...
+    ChildrenRequires: ...
+
+ROOT Group[@14]
+  ...
+  Lowest Plan ... BEST
+    Cost: 1,658,520.32
+    Properties: GATHER</code></pre>
+            <div class="grid-2">
+              <div class="card"><h4>读一个 Group 的固定顺序</h4><ol><li>Logical Expressions：这个等价类有哪些逻辑写法。</li><li>Physical Expressions：有哪些物理实现。</li><li>Enforcers：为补属性插入了什么。</li><li>Statistics：该等价结果估算多少行。</li><li>Lowest Plan：对每个 required property，谁最便宜。</li><li>ChildrenRequires：赢家要求孩子提供什么属性。</li></ol></div>
+              <div class="card"><h4>本次两种模式</h4><p>Cascades 最终 Memo：20 Groups、24 logical expressions、26 physical expressions、21 enforcers。</p><p>DPHyp 重建后的最终 Memo：16 Groups、15 logical expressions、17 physical expressions、11 enforcers。</p><p>最终 Shape 完全相同，但搜索空间不同。</p></div>
+            </div>
+            <div class="callout red"><strong>DPHyp 边界：</strong>上面的 16 Groups 是重建后的 Memo #2，不包含临时 Memo #1 的完整 DP table。不要用它计算 DPHyp 实际枚举了多少 CSG/CMP。</div>
+            <p><a class="source" href="nereids-cascades-q3/memo/cascades.txt">memo/cascades.txt</a> <a class="source" href="nereids-cascades-q3/memo/dphyp.txt">memo/dphyp.txt</a></p>
+          </div></details>
+
+          <details open><summary>6. SHAPE PLAN：先用紧凑骨架建立方向感</summary><div>
+            <pre><code>PhysicalQuickSort[MERGE_SORT]
+--PhysicalDistribute[DistributionSpecGather]
+----PhysicalQuickSort[LOCAL_SORT]
+------hashJoin[INNER_JOIN bucketShuffle]
+        ... lineitem
+        ... hashJoin[INNER_JOIN broadcast]
+              ... orders
+              ... customer</code></pre>
+            <p>Shape 隐去大多数 ID、stats 和 property 细节，最适合第一次确认：</p>
+            <ul><li>join order 是 <code>lineitem ⋈ (orders ⋈ customer)</code>；</li><li>customer 是 broadcast build side；</li><li>orders/customer 子树按 orderkey 做 bucket shuffle 后与 lineitem 连接；</li><li>ORDER BY 采用 LOCAL_SORT → GATHER → MERGE_SORT。</li></ul>
+            <p><strong>Shape 看不到：</strong>总代价、每层 row estimate、具体 Group、候选为何输掉、worker/fragment 分配。因此它是目录，不是完整证明。</p>
+            <p><a class="source" href="nereids-cascades-q3/shape/cascades.txt">shape/cascades.txt</a> <a class="source" href="nereids-cascades-q3/shape/dphyp.txt">shape/dphyp.txt</a></p>
+          </div></details>
+
+          <details open><summary>7. PHYSICAL PLAN：最终算子、统计、属性与 cost</summary><div>
+            <pre><code>cost = 1658520.3249947876
+PhysicalQuickSort[MERGE_SORT]@13 (stats=48,443.3)
++--PhysicalDistribute@15 (DistributionSpecGather)
+   +--PhysicalQuickSort[LOCAL_SORT]@15
+      +--PhysicalHashJoin@11 (o_orderkey = l_orderkey)
+         |--lineitem scan/filter/project
+         +--PhysicalDistribute (STORAGE_BUCKETED by o_orderkey)
+            +--PhysicalHashJoin@9 (c_custkey = o_custkey)
+               |--orders scan/filter/project
+               +--PhysicalDistribute (REPLICATED customer)</code></pre>
+            <ol>
+              <li>先从三个 Scan 向上看 filter 后行数：customer 15,000 → 3,150；orders 150,000 → 72,910.6；lineitem 600,572 → 322,890.73。</li>
+              <li>内层 Hash Join 把较小 customer 复制为 build side，输出估算 22,836.67 行。</li>
+              <li>该子树按 <code>o_orderkey</code> 调整为 STORAGE_BUCKETED，与 lineitem 做 bucket-shuffle join，输出 48,443.3 行。</li>
+              <li>无 LIMIT 的 ORDER BY 使用 <code>PhysicalQuickSort</code>：每个 fragment 先 LOCAL_SORT，GATHER 后由 MERGE_SORT 合并有序流。</li>
+              <li>第一行 scalar cost 用于候选比较，不是毫秒；<code>RF0..RF3</code> 是最终计划生成的 runtime filters。</li>
+            </ol>
+            <p>Cascades 与 DPHyp 文件的 operator shape、stats 和 cost 相同，主要差异是本次生成的 node IDs；比较结构请优先用 Shape 文件。</p>
+            <p><a class="source" href="nereids-cascades-q3/physical/cascades.txt">physical/cascades.txt</a> <a class="source" href="nereids-cascades-q3/physical/dphyp.txt">physical/dphyp.txt</a></p>
+          </div></details>
+
+          <details open><summary>8. DISTRIBUTED PLAN：PhysicalDistribute 怎样落成 fragments 与 exchanges</summary><div>
+            <p>本次输出有 4 个 <code>PipelineDistributedPlan</code>，建议按 fragment 3 → 2 → 1 → 0 的数据流方向读：</p>
+            <div class="table-wrap"><table><thead><tr><th>Fragment</th><th>主要工作</th><th>发送到哪里</th></tr></thead><tbody>
+              <tr><td>3 · customer</td><td>扫描 customer，执行 segment filter</td><td>经 Exchange 1 作为 broadcast 输入送给 fragment 2</td></tr>
+              <tr><td>2 · orders</td><td>扫描 orders，与 customer 做 BROADCAST Hash Join</td><td>经 Exchange 4 按 o_orderkey 做 bucket shuffle</td></tr>
+              <tr><td>1 · lineitem</td><td>扫描 lineitem，做 BUCKET_SHUFFLE Hash Join 与 LOCAL_SORT</td><td>经 merge Exchange 8 汇聚有序流</td></tr>
+              <tr><td>0 · result</td><td>VMERGING-EXCHANGE 合并，ResultSink 返回 MySQL client</td><td>查询结果</td></tr>
+            </tbody></table></div>
+            <p><code>fragmentJob</code> 描述怎样为 fragment 生成实例；<code>instanceJobs</code> 展示 worker、scan ranges 和 tablet 分配。本次为便于阅读显式设置 parallel=1，且集群只有一个 BE，所以四个实例都落在同一 worker；这不代表生产集群也只有一个实例。</p>
+            <div class="callout"><strong>对应关系：</strong>Memo/PhysicalPlan 中的 REPLICATED、STORAGE_BUCKETED、GATHER 分别在执行计划中表现为 broadcast exchange、bucket-shuffle exchange、merging exchange。<code>PhysicalDistribute</code>、<code>ExchangeNode</code>、<code>PipelineDistributedPlan</code> 是连续三个层次，不是同一个对象。</div>
+            <p><strong>第一次可以跳过：</strong>instanceId、tabletList、每个 scan range 的 bytes。这些用于部署和调度诊断，不影响先理解 optimizer 决策。</p>
+            <p><a class="source" href="nereids-cascades-q3/distributed/cascades.txt">distributed/cascades.txt</a> <a class="source" href="nereids-cascades-q3/distributed/dphyp.txt">distributed/dphyp.txt</a></p>
+          </div></details>
+        </section>
+
         <section id="ir">
-          <p class="section-kicker">03 · Intermediate representation</p>
+          <p class="section-kicker">04 · Intermediate representation</p>
           <h2>Plan 与 Expression：两棵互相引用、职责不同的树</h2>
           <div class="object-row" aria-label="Plan 节点与标量表达式关系">
             <div class="object-box"><b>Plan tree</b><small>operator + child plans<br>Filter / Join / Aggregate / Sort</small></div>
@@ -616,12 +791,12 @@ EXPLAIN DISTRIBUTED PLAN &lt;Q3&gt;;</code></pre>
 
           <div class="table-wrap">
             <table>
-              <thead><tr><th>对象</th><th>源码责任</th><th>关键状态</th><th>在 Q3 中的例子</th></tr></thead>
+              <thead><tr><th>对象</th><th>源码责任</th><th>关键状态</th><th>在简化查询中的例子</th></tr></thead>
               <tbody>
-                <tr><td><code>Plan</code></td><td>所有逻辑/物理计划节点的统一接口；暴露 children、expressions、output、input slots、logical properties 和 memo 快速引用。</td><td><code>PlanType</code>、children、<code>Optional&lt;GroupExpression&gt;</code></td><td>Join、Filter、Aggregate、TopN</td></tr>
-                <tr><td><code>LogicalPlan</code></td><td>描述“算什么”，保留关系代数语义；本身不承诺 hash join、exchange 等执行算法。</td><td>输出 slots、nullability、DataTrait</td><td><code>LogicalJoin</code>、<code>LogicalAggregate</code></td></tr>
+                <tr><td><code>Plan</code></td><td>所有逻辑/物理计划节点的统一接口；暴露 children、expressions、output、input slots、logical properties 和 memo 快速引用。</td><td><code>PlanType</code>、children、<code>Optional&lt;GroupExpression&gt;</code></td><td>Join、Filter、Project、Sort</td></tr>
+                <tr><td><code>LogicalPlan</code></td><td>描述“算什么”，保留关系代数语义；本身不承诺 hash join、exchange 等执行算法。</td><td>输出 slots、nullability、DataTrait</td><td><code>LogicalJoin</code>、<code>LogicalSort</code></td></tr>
                 <tr><td><code>PhysicalPlan</code></td><td>描述“怎样执行”；可绑定 physical properties 与 statistics，最终可被 translator 消费。</td><td><code>PhysicalProperties</code>、<code>Statistics</code></td><td><code>PhysicalHashJoin</code>、<code>PhysicalQuickSort</code></td></tr>
-                <tr><td><code>Expression</code></td><td>独立的标量表达式树；递归类型检查，缓存 input slots / ExprIds、深度与宽度。</td><td>data type、nullable、children、ExprId/Slot</td><td><code>c_custkey = o_custkey</code>、<code>sum(...)</code></td></tr>
+                <tr><td><code>Expression</code></td><td>独立的标量表达式树；递归类型检查，缓存 input slots / ExprIds、深度与宽度。</td><td>data type、nullable、children、ExprId/Slot</td><td><code>c_custkey = o_custkey</code>、<code>o_orderdate &lt; DATE ...</code></td></tr>
                 <tr><td><code>LogicalProperties</code></td><td>延迟计算 output、ExprIds、nullability 和 DataTrait；参与 Group 等价性检查。</td><td>output set、asterisk output、<code>DataTrait</code></td><td>join 输出列集合与 nullable 状态</td></tr>
               </tbody>
             </table>
@@ -638,7 +813,7 @@ EXPLAIN DISTRIBUTED PLAN &lt;Q3&gt;;</code></pre>
         </section>
 
         <section id="rules">
-          <p class="section-kicker">04 · Transform language</p>
+          <p class="section-kicker">05 · Transform language</p>
           <h2>Rule / RuleType：同一种外壳，三种核心用途</h2>
           <p class="section-intro"><code>Rule</code> 把“匹配什么、满足什么条件、产生什么计划”封装起来；<code>RuleType</code> 同时是唯一编号和类别标签。规则真正在哪个阶段运行，由 rule class、RuleSet 和 Job executor 共同决定。</p>
 
@@ -661,7 +836,7 @@ EXPLAIN DISTRIBUTED PLAN &lt;Q3&gt;;</code></pre>
 
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Q3 上的变化</th><th>类别</th><th>结果进入哪里</th><th>是否保留旧候选</th></tr></thead>
+              <thead><tr><th>简化查询上的变化</th><th>类别</th><th>结果进入哪里</th><th>是否保留旧候选</th></tr></thead>
               <tbody>
                 <tr><td>filter 下推到 customer/orders/lineitem scan 上方</td><td>Rewrite</td><td>新的 normalized plan tree</td><td>通常不保留旧树</td></tr>
                 <tr><td><code>(customer ⋈ orders) ⋈ lineitem</code> 与合法的交换/结合形态</td><td>Exploration</td><td>目标 Group 的 logical expressions</td><td>保留并共享子 Group</td></tr>
@@ -678,7 +853,7 @@ EXPLAIN DISTRIBUTED PLAN &lt;Q3&gt;;</code></pre>
         </section>
 
         <section id="memo">
-          <p class="section-kicker">05 · Shared search space</p>
+          <p class="section-kicker">06 · Shared search space</p>
           <h2>Memo / Group / GroupExpression：把树空间压成共享图</h2>
           <p class="section-intro">Memo 的关键不是“缓存计划”，而是把 logical equivalence class 和 operator expression 分开：Group 表示“同一件事”，GroupExpression 表示“用哪个算子、依赖哪些子等价类来做”。</p>
 
@@ -771,7 +946,7 @@ EXPLAIN DISTRIBUTED PLAN &lt;Q3&gt;;</code></pre>
         </section>
 
         <section id="context">
-          <p class="section-kicker">06 · Per-statement workspace</p>
+          <p class="section-kicker">07 · Per-statement workspace</p>
           <h2>CascadesContext：把树模式、Memo 模式和调度状态接起来</h2>
           <p class="section-intro"><code>CascadesContext</code> 不是一个全局 optimizer singleton，也不只是 Memo 的包装。它是一次 statement optimization 的工作区，并能为 CTE、subquery 或临时 rewrite 派生子 context。</p>
 
@@ -810,7 +985,7 @@ rewrite complete
         </section>
 
         <section id="jobs">
-          <p class="section-kicker">07 · Scheduling</p>
+          <p class="section-kicker">08 · Scheduling</p>
           <h2>Job 调度：显式栈上的深度优先 continuation</h2>
           <p class="section-intro">当前 Nereids 优化器没有一个单独名为 <code>Task</code> 的调度抽象；调度单位是 <code>Job</code>。<code>SimpleJobScheduler</code> 单线程串行地从 <code>JobStack</code> pop，因此这是 LIFO 深度优先执行，不是 worker pool。</p>
 
@@ -905,7 +1080,7 @@ rewrite complete
         </section>
 
         <section id="properties">
-          <p class="section-kicker">08 · Group × required property</p>
+          <p class="section-kicker">09 · Group × required property</p>
           <h2>物理属性、成本与 Enforcer：分布式搜索真正耦合的地方</h2>
           <p class="section-intro"><code>PhysicalProperties</code> 由 <code>DistributionSpec + OrderSpec</code> 组成。父节点的 required property 不是 Group 的固定字段，而是一次搜索请求；同一 Group 会按不同 property 保存不同 best plan。</p>
 
@@ -944,7 +1119,7 @@ candidate B: [HASH(leftKeys), HASH(rightKeys)]
 
 one phase:
   GATHER_SORT(child requires GATHER)</code></pre>
-              <p>普通 <code>LogicalSort</code> 由 <code>LogicalSortToPhysicalQuickSort</code> 产生两种实现；Q3 带 LIMIT，因此实际由对应的 <code>LogicalTopNToPhysicalTopN</code> 产生 <code>PhysicalTopN</code> 两阶段/单阶段候选，fixture 中 two-phase 方案胜出。</p>
+              <p>本查询没有 LIMIT，<code>LogicalSortToPhysicalQuickSort</code> 直接产生 two-phase 与 one-phase <code>PhysicalQuickSort</code> 候选。本次结果中 two-phase 方案胜出：LOCAL_SORT → GATHER → MERGE_SORT。</p>
             </div>
           </div>
 
@@ -1003,11 +1178,11 @@ one phase:
           <h3>统计与 cost 怎样接进来</h3>
           <p><code>DeriveStatsJob</code> 自底向上为 GroupExpression 调用 <code>StatsCalculator</code>；启用 HBO 时改用 <code>HboStatsCalculator</code>。<code>Cost</code> 保存 CPU、memory、network 三个分量，并按 session cost weights 折算成一个 scalar value；<code>CostCalculator.addChildCost</code> 把节点和子树分量相加。</p>
           <div class="callout warn"><strong>不要套用通用清单：</strong>当前 <code>Cost</code> 没有独立的 sequential/random I/O 字段，也没有单独的 spill 字段。相关影响只能体现在具体算子公式、统计量、系数或未来模型演进中。文档讲“估计平面”时应区分理想维度与当前代码。</div>
-          <p><a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/PhysicalProperties.java">PhysicalProperties.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/RequestPropertyDeriver.java">RequestPropertyDeriver.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/ChildOutputPropertyDeriver.java">ChildOutputPropertyDeriver.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/ChildrenPropertiesRegulator.java">ChildrenPropertiesRegulator.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/EnforceMissingPropertiesHelper.java">EnforceMissingPropertiesHelper.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/implementation/LogicalTopNToPhysicalTopN.java">LogicalTopNToPhysicalTopN.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/cost/Cost.java">Cost.java</a></p>
+          <p><a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/PhysicalProperties.java">PhysicalProperties.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/RequestPropertyDeriver.java">RequestPropertyDeriver.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/ChildOutputPropertyDeriver.java">ChildOutputPropertyDeriver.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/ChildrenPropertiesRegulator.java">ChildrenPropertiesRegulator.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/EnforceMissingPropertiesHelper.java">EnforceMissingPropertiesHelper.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/implementation/LogicalSortToPhysicalQuickSort.java">LogicalSortToPhysicalQuickSort.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/cost/Cost.java">Cost.java</a></p>
         </section>
 
         <section id="dphyp">
-          <p class="section-kicker">09 · Hypergraph join order</p>
+          <p class="section-kicker">10 · Hypergraph join order</p>
           <h2>DPHyp 产生的 join tree，究竟怎样进入 Cascades Memo</h2>
           <p class="section-intro">当前实现不是“DPHyp 在 Memo 外吐出一棵树，再把它追加到同一个最终 Memo”。准确路径是：先在一个临时 Memo 中做 hypergraph 枚举和轻量物理计价，选出 logical join tree；随后丢弃该 Memo，用选中树重建最终 Memo，再做统一的 Cascades physical-property 搜索。</p>
 
@@ -1025,7 +1200,7 @@ one phase:
           <h3>源码逐步展开</h3>
           <ol class="steps">
             <li><code>Optimizer.execute()</code> 先对 normalized plan 调用 <code>CascadesContext.toMemo()</code>，并对 root logical expressions 运行 <code>DeriveStatsJob</code>。这是 Memo #1。</li>
-            <li><code>Optimizer.isDpHyp()</code> 比较的是 <code>Memo.countMaxContinuousJoin(rewritePlan)</code> 得到的“最大连续 <code>LogicalJoin</code> 算子数”，不是表数。自动选择条件是 <code>continuousJoinNum &gt; maxTableCountUseCascadesJoinReorder</code>；默认阈值为 10，列统计未知时翻倍。普通连通的 N 表二叉 join 通常有 N−1 个 join 算子，因此已知统计下默认从 12 表起才可能自动选择 DPHyp。三表 Q3 需显式设置 <code>enable_dphyp_optimizer=true</code>。</li>
+            <li><code>Optimizer.isDpHyp()</code> 比较的是 <code>Memo.countMaxContinuousJoin(rewritePlan)</code> 得到的“最大连续 <code>LogicalJoin</code> 算子数”，不是表数。自动选择条件是 <code>continuousJoinNum &gt; maxTableCountUseCascadesJoinReorder</code>；默认阈值为 10，列统计未知时翻倍。普通连通的 N 表二叉 join 通常有 N−1 个 join 算子，因此已知统计下默认从 12 表起才可能自动选择 DPHyp。本三表教学查询需显式设置 <code>enable_dphyp_optimizer=true</code>。</li>
             <li><code>JoinOrderJob</code> 找到可重排 join cluster，<code>HyperGraph.Builder</code> 将非 join 子树变成 nodes、join predicate 变成 edges；<code>SubgraphEnumerator</code> 按 CSG/CMP 枚举合法连接。</li>
             <li><code>PlanReceiver</code> 的 DP table 是 <code>bitmap → Group</code>。每次 emit 用左右 subset Group 的 <code>GroupPlan</code> 构造 <code>LogicalJoin</code> / <code>LogicalProject</code>，为新 subset 建 Group，并调用 <code>Memo.copyIn()</code>。</li>
             <li>新 join GroupExpression 立即通过 <code>OptimizeGroupExpressionJob(..., ANY)</code> 产生物理实现、child property 组合和 cost；因此 DPHyp 的 DP 决策已经借用了 Cascades 的 implementation/property/cost 基础设施，但此时求解目标是 <code>ANY</code>。</li>
@@ -1036,7 +1211,7 @@ one phase:
 
           <div class="callout red"><strong>最重要的观察结论：</strong><code>EXPLAIN MEMO PLAN</code> 展示的是重建后的最终 Memo，不是保留了全部 DPHyp subset/join-tree alternatives 的 Memo #1。若要研究 CSG/CMP 枚举，必须同时看 <code>enable_dphyp_trace</code> 日志或在 <code>PlanReceiver#emitCsgCmp</code> 下断点。</div>
 
-          <h3>把 Q3 的组合决策说完整，也画出当前实现的边界</h3>
+          <h3>把教学查询的组合决策说完整，也画出当前实现的边界</h3>
           <pre><code>Memo #1 · DPHyp subset search under ANY
   legal join order + join-local implementations/properties/cost
   (Hash or NLJ; broadcast/shuffle cost can affect subset winner)
@@ -1044,31 +1219,31 @@ one phase:
 Memo #2 · final Cascades search under root GATHER
   implementation rules → PhysicalHashJoin / PhysicalNestedLoopJoin
   RequestPropertyDeriver → broadcast or hash-compatible shuffle/bucket/colocate
-  LogicalTopN / Sort → local + merge or gather alternatives
+  LogicalSort → local + merge or gather alternatives
   EnforceMissingPropertiesHelper → PhysicalDistribute / PhysicalQuickSort
   Cost(cpu, memory, network) → Best(Group, required PhysicalProperties)</code></pre>
-          <p>因此“join order、join method、distribution、exchange placement 完全在一个搜索空间里联合择优”并不符合当前 DPHyp 路径。Memo #1 中，join-local 的实现、分布与 network cost 可以影响 subset winner；但一棵 logical join tree 被 copy-out、Memo #1 被释放后，Memo #2 的上层 TopN、root GATHER 或 sort cost 不能再让已经丢弃的 DPHyp join order 胜出。普通 Cascades exploration 在同一 Memo 内保留的 join alternatives，则可以继续参与该 Memo 的 property/cost 比较。</p>
+          <p>因此“join order、join method、distribution、exchange placement 完全在一个搜索空间里联合择优”并不符合当前 DPHyp 路径。Memo #1 中，join-local 的实现、分布与 network cost 可以影响 subset winner；但一棵 logical join tree 被 copy-out、Memo #1 被释放后，Memo #2 的上层 ORDER BY、root GATHER 或 sort cost 不能再让已经丢弃的 DPHyp join order 胜出。普通 Cascades exploration 在同一 Memo 内保留的 join alternatives，则可以继续参与该 Memo 的 property/cost 比较。</p>
 
           <div class="grid-2">
             <div class="card"><h3>显式启用 DPHyp</h3><pre><code>SET enable_dphyp_optimizer = true;
 SET enable_dphyp_trace = true;
-EXPLAIN MEMO PLAN &lt;Q3&gt;;</code></pre><p>该开关只满足 DPHyp 的选择分支，仍要求存在 join、允许 join reorder、没有禁用 reorder 的 leading hint，且 join 数不超过 <code>max_join_number_of_reorder</code>。Q3 在本文设置下满足这些 gate。</p></div>
+EXPLAIN MEMO PLAN &lt;QUERY&gt;;</code></pre><p>该开关只满足 DPHyp 的选择分支，仍要求存在 join、允许 join reorder、没有禁用 reorder 的 leading hint，且 join 数不超过 <code>max_join_number_of_reorder</code>。本查询在本文设置下满足这些 gate。</p></div>
             <div class="card"><h3>对照普通 Cascades</h3><pre><code>SET enable_dphyp_optimizer = false;
 SET disable_join_reorder = false;
-EXPLAIN MEMO PLAN &lt;Q3&gt;;</code></pre><p>三表通常走 zig-zag/bushy exploration rules。两轮可比较最终 logical/physical shape；DPHyp 的枚举规模必须比较 CSG/CMP trace，不能用最终 Memo #2 的 GroupExpression 数量代替。</p></div>
+EXPLAIN MEMO PLAN &lt;QUERY&gt;;</code></pre><p>三表通常走 zig-zag/bushy exploration rules。两轮可比较最终 logical/physical shape；DPHyp 的枚举规模必须比较 CSG/CMP trace，不能用最终 Memo #2 的 GroupExpression 数量代替。</p></div>
           </div>
           <p><a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/executor/Optimizer.java">Optimizer.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/memo/Memo.java">Memo.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/qe/SessionVariable.java">SessionVariable.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/joinorder/JoinOrderJob.java">JoinOrderJob.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/joinorder/hypergraphv2/SubgraphEnumerator.java">hypergraphv2/SubgraphEnumerator.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/joinorder/hypergraphv2/receiver/PlanReceiver.java">hypergraphv2/receiver/PlanReceiver.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/stats/MemoStatsAndCostRecomputer.java">MemoStatsAndCostRecomputer.java</a></p>
         </section>
 
         <section id="distributed">
-          <p class="section-kicker">10 · From optimizer to execution</p>
+          <p class="section-kicker">11 · From optimizer to execution</p>
           <h2>选出 PhysicalPlan 之后，怎样变成分布式执行计划</h2>
           <p class="section-intro">Cascades 搜索结束时仍是一棵 Nereids <code>PhysicalPlan</code>。执行系统需要 PlanNode、ExchangeNode、PlanFragment、worker 和 instance；这些转换发生在 Memo 之外，但 Exchange 的位置和类型已经受到 CBO property search 的约束。</p>
 
           <ol class="flow-strip" aria-label="PhysicalPlan 到 DistributedPlan">
             <li class="flow-node"><b>Best(root, GATHER)</b><span><code>chooseBestPlan</code><br>沿 child properties copy-out</span></li><li class="arrow" aria-hidden="true">→</li>
             <li class="flow-node"><b>Physical tree</b><span>chosen expression + enforcers<br>attached stats/properties</span></li><li class="arrow" aria-hidden="true">→</li>
-            <li class="flow-node"><b>Post-process</b><span>runtime filter / TopN filter<br>late physical rewrites</span></li><li class="arrow" aria-hidden="true">→</li>
+            <li class="flow-node"><b>Post-process</b><span>runtime filter<br>late physical rewrites</span></li><li class="arrow" aria-hidden="true">→</li>
             <li class="flow-node"><b>Translator</b><span><code>PhysicalPlanTranslator</code><br>Nereids → PlanNode</span></li><li class="arrow" aria-hidden="true">→</li>
             <li class="flow-node"><b>Fragments</b><span><code>PhysicalDistribute</code><br>→ ExchangeNode + split</span></li><li class="arrow" aria-hidden="true">→</li>
             <li class="flow-node"><b>Distribute</b><span><code>DistributePlanner</code><br>assign workers / DOP</span></li><li class="arrow" aria-hidden="true">→</li>
@@ -1077,9 +1252,9 @@ EXPLAIN MEMO PLAN &lt;Q3&gt;;</code></pre><p>三表通常走 zig-zag/bushy explo
 
           <div class="table-wrap">
             <table>
-              <thead><tr><th>层次</th><th>源码对象</th><th>它决定什么</th><th>Q3 中的表现</th></tr></thead>
+              <thead><tr><th>层次</th><th>源码对象</th><th>它决定什么</th><th>简化查询中的表现</th></tr></thead>
               <tbody>
-                <tr><td>CBO property/enforcer</td><td><code>PhysicalDistribute</code>、<code>DistributionSpec*</code></td><td>哪里必须 gather/broadcast/repartition，以及代价</td><td>TopN merge 前 GATHER；customer build broadcast</td></tr>
+                <tr><td>CBO property/enforcer</td><td><code>PhysicalDistribute</code>、<code>DistributionSpec*</code></td><td>哪里必须 gather/broadcast/repartition，以及代价</td><td>QuickSort merge 前 GATHER；customer broadcast；orders 子树 bucket shuffle</td></tr>
                 <tr><td>Plan translation</td><td><code>PhysicalPlanTranslator</code></td><td>Nereids physical operator 到 executable PlanNode；fragment split</td><td>每个 PhysicalDistribute 翻译为 ExchangeNode</td></tr>
                 <tr><td>Instance planning</td><td><code>DistributePlanner</code></td><td>scan/fragment job 分配到哪些 BE、多少 instance、怎样连接</td><td>按环境中的 worker 与 parallelism 实例化</td></tr>
                 <tr><td>BE local scheduling</td><td>pipeline/local exchange 相关后续处理</td><td>单机内部并行与数据交换</td><td>不属于 Cascades Memo 搜索本身</td></tr>
@@ -1092,18 +1267,24 @@ EXPLAIN MEMO PLAN &lt;Q3&gt;;</code></pre><p>三表通常走 zig-zag/bushy explo
         </section>
 
         <section id="lab">
-          <p class="section-kicker">11 · Hands-on workbook</p>
+          <p class="section-kicker">12 · Hands-on workbook</p>
           <h2>三表实验记录手册：把“看过 EXPLAIN”变成“解释了搜索”</h2>
-          <p class="section-intro">建议只使用 Q3 一条 SQL，分四轮采样：parsed/analyzed、rewrite process、Memo/search、distributed plan。每轮都回答一个限定问题，最后再把记录串起来。</p>
+          <p class="section-intro">始终使用第 2 节的简化查询，分四轮观察：parsed/analyzed/logical、rewrite process、Memo/search、physical/distributed。第 3 节负责教你认输出；本节负责让你亲手复现、记录和下断点。</p>
 
-          <div class="callout"><strong>实验前置：</strong>连接到待观察 FE 的 MySQL query port，使用 regression 已准备或自行加载的 TPCH 数据库；确认 <code>customer</code>、<code>orders</code>、<code>lineitem</code> 数据与统计在两轮对照中不变。实际执行时把下文 <code>&lt;tpch_db&gt;</code> 和 <code>&lt;Q3&gt;</code> 分别替换为数据库名与第 2 节的完整 SQL，不要把占位符原样粘贴给客户端。</div>
+          <div class="callout"><strong>实验前置：</strong>连接到待观察 FE 的 MySQL query port，使用 regression 已准备或自行加载的 TPCH 数据库；确认 <code>customer</code>、<code>orders</code>、<code>lineitem</code> 数据与统计在 Cascades/DPHyp 两轮中不变。本文当前结果来自 127.0.0.1:9035 的 <code>regression_test_nereids_tpch_p0</code>，版本与行数保存在 <a href="nereids-cascades-q3/environment/result.tsv">environment/result.tsv</a>。</div>
 
-          <h3>第一轮：固定实验输入</h3>
+          <h3>第一轮：一键保存全部 EXPLAIN</h3>
+          <pre><code>DORIS_QUERY_PORT=9035 \
+DORIS_DB=regression_test_nereids_tpch_p0 \
+bash docs/nereids-cascades-q3/capture.sh</code></pre>
+          <p>脚本会覆盖 <code>docs/nereids-cascades-q3/</code> 下的阶段结果，并同时采样 Cascades 与显式 DPHyp 模式。若要在客户端逐条执行，使用同一组 session 设置：</p>
           <pre><code>USE &lt;tpch_db&gt;;
 
 SET enable_nereids_planner = true;
 SET enable_fallback_to_original_planner = false;
 SET disable_join_reorder = false;
+SET parallel_pipeline_task_num = 1;
+SET enable_nereids_distribute_planner = true;
 
 -- 为三表查询显式进入 DPHyp；对照轮再设为 false
 SET enable_dphyp_optimizer = true;
@@ -1121,11 +1302,11 @@ SET enable_dphyp_trace = true;</code></pre>
             <table>
               <thead><tr><th>要记录的材料</th><th>命令 / 断点</th><th>必须回答的问题</th></tr></thead>
               <tbody>
-                <tr><td>初始 logical tree</td><td><code>EXPLAIN PARSED PLAN &lt;Q3&gt;</code></td><td>哪些 relation、slot、function 仍未绑定？WHERE 中 join predicates 处于什么位置？</td></tr>
-                <tr><td>analyzed tree</td><td><code>EXPLAIN ANALYZED PLAN &lt;Q3&gt;</code></td><td>ExprId、type、nullable、qualified slot 何时确定？</td></tr>
-                <tr><td>normalization 后的最终 tree</td><td><code>EXPLAIN LOGICAL PLAN &lt;Q3&gt;</code></td><td>filter/project/join/aggregate 最终收敛成什么结构？它将怎样进入 Memo？</td></tr>
-                <tr><td>normalization 变化过程</td><td><code>EXPLAIN LOGICAL PLAN PROCESS &lt;Q3&gt;</code></td><td>每一行 process 由哪条 rule 产生？输入/输出怎样变化？这不是一棵单独的最终树。</td></tr>
-                <tr><td>最终 Memo groups 与表达式</td><td><code>EXPLAIN MEMO PLAN &lt;Q3&gt;</code> + <code>Memo#copyIn</code></td><td>Memo #2 中每个 Group 表示什么结果？哪些 logical/physical expressions 属于同一 Group？不要把它当成 DPHyp DP table。</td></tr>
+                <tr><td>初始 logical tree</td><td><code>parsed/result.txt</code></td><td>哪些 relation、slot、function 仍未绑定？WHERE 中 join predicates 处于什么位置？</td></tr>
+                <tr><td>analyzed tree</td><td><code>analyzed/result.txt</code></td><td>ExprId、type、nullable、qualified slot 何时确定？</td></tr>
+                <tr><td>normalization 后的最终 tree</td><td><code>logical/result.txt</code></td><td>filter/project/join/sort 最终收敛成什么结构？它将怎样进入 Memo？</td></tr>
+                <tr><td>normalization 变化过程</td><td><code>logical-process/result.tsv</code></td><td>每一行 process 由哪条 rule 产生？输入/输出怎样变化？这不是一棵单独的最终树。</td></tr>
+                <tr><td>最终 Memo groups 与表达式</td><td><code>memo/{cascades,dphyp}.txt</code> + <code>Memo#copyIn</code></td><td>最终 Memo 中每个 Group 表示什么结果？哪些 logical/physical expressions 属于同一 Group？不要把 DPHyp 文件当成临时 DP table。</td></tr>
                 <tr><td>DPHyp enumeration</td><td><code>PlanReceiver#emitCsgCmp</code>、FE trace</td><td>哪个 left/right bitmap 组成新 subset？predicate/edge 是否允许连接？哪个 Group 进入 DP table？</td></tr>
                 <tr><td>physical implementations</td><td><code>ApplyRuleJob#execute</code></td><td>每个 logical operator 产生哪些 physical expressions？为什么 join 是 Hash 或 NLJ？</td></tr>
                 <tr><td>required / child / output properties</td><td><code>CostAndEnforcerJob#execute</code></td><td>parent 要什么？当前 operator 向每个 child 要什么？child 实际输出什么？</td></tr>
@@ -1143,8 +1324,8 @@ SET enable_dphyp_trace = true;</code></pre>
                 <tr><td>G? · customer</td><td>scan + pushed filter/project</td><td>PhysicalOlapScan / Filter / Project</td><td>ANY / REPLICATED / ...</td><td>leaf</td><td>按实际记录</td><td>逐 property 记录</td></tr>
                 <tr><td>G? · orders</td><td>scan + date filter/project</td><td>对应 physical nodes</td><td>ANY / HASH(o_custkey) / ...</td><td>按 operator 记录</td><td>按实际记录</td><td>逐 property 记录</td></tr>
                 <tr><td>G? · customer ⋈ orders</td><td>原 join / commute / DPHyp chosen form</td><td>PhysicalHashJoin 或 NLJ</td><td>ANY / HASH / ...</td><td>[ANY, REPLICATED] 或 [HASH, HASH]</td><td>Broadcast/Shuffle 对应 distribute</td><td>比较 network + child cost</td></tr>
-                <tr><td>G? · all three tables</td><td>不同合法 join order</td><td>join physical expressions</td><td>上层 agg/sort 传入</td><td>记录每一组 child tuple</td><td>按实际记录</td><td>选出 join subtree best</td></tr>
-                <tr><td>ROOT · result/topN</td><td>normalized sink/topN</td><td>local/merge 或 gather sort</td><td>GATHER</td><td>ANY / GATHER + order</td><td>Gather + sort</td><td>root BEST scalar cost</td></tr>
+                <tr><td>G? · all three tables</td><td>不同合法 join order</td><td>join physical expressions</td><td>上层 sort 传入</td><td>记录每一组 child tuple</td><td>按实际记录</td><td>选出 join subtree best</td></tr>
+                <tr><td>ROOT · result/sort</td><td>LogicalResultSink + LogicalSort</td><td>LOCAL/MERGE 或 GATHER sort</td><td>GATHER</td><td>GATHER + order</td><td>Gather + sort</td><td>root BEST scalar cost</td></tr>
               </tbody>
             </table>
           </div>
@@ -1193,24 +1374,21 @@ SET enable_dphyp_trace = true;</code></pre>
   org.apache.doris.nereids.sqltest.JoinOrderJobTest#testSimpleSQL
 
 ./run-fe-ut.sh --run \
-  org.apache.doris.nereids.jobs.joinorder.hypergraphv2.SubgraphEnumeratorTest#testStarQuery</code></pre><p>前者覆盖 <code>JoinOrderJob</code> 的简单 SQL 路径，后者覆盖 hypergraphv2 star-query 枚举。当前没有一个以 Q3 断言完整 Memo #1 → Memo #2 生命周期的现成单测；该部分依赖本文的手工 trace/断点实验。</p></div>
+  org.apache.doris.nereids.jobs.joinorder.hypergraphv2.SubgraphEnumeratorTest#testStarQuery</code></pre><p>前者覆盖 <code>JoinOrderJob</code> 的简单 SQL 路径，后者覆盖 hypergraphv2 star-query 枚举。当前没有一个以本简化查询断言完整 Memo #1 → Memo #2 生命周期的现成单测；该部分依赖本文的手工 trace/断点实验。</p></div>
           </div>
           <div class="grid-2">
-            <div class="card"><h3>权威 regression / shape</h3><pre><code>./run-regression-test.sh --run \
-  -d nereids_tpch_p0/tpch \
-  -s nereids_tpch_q3
+            <div class="card"><h3>复现本查询结果</h3><pre><code>bash docs/nereids-cascades-q3/capture.sh
 
-./run-regression-test.sh --run \
-  -d shape_check/tpch_sf1000/shape \
-  -s q3</code></pre><p><code>nereids_tpch_q3</code> 校验查询结果；shape suite 校验 <code>EXPLAIN SHAPE PLAN</code> 的优化后物理形状，并显式关闭 <code>enable_nereids_distribute_planner</code>。两者都未启用 DPHyp，因此不能证明 DPHyp 枚举过程或 DistributedPlan 的 worker/fragment instance 分配。</p></div>
-            <div class="card"><h3>验证边界</h3><p>这些 suite 需要相应 TPCH 数据集和 regression 环境。FE tests 验证局部对象和算法，Q3 regression 验证结果，shape fixture 验证稳定物理骨架，手工 trace/断点才负责本文的 DPHyp 两-Memo 观察。四类证据不能相互替代。</p></div>
+git diff -- \
+  docs/nereids-cascades-q3</code></pre><p>优先比较 <code>shape/*.txt</code> 的结构；再用 physical/memo/distributed 文件解释差异。不要先比较易变的 Plan ID、ExprId、tablet ID 或 instance ID。</p></div>
+            <div class="card"><h3>验证边界</h3><p>FE tests 验证局部对象和算法；本地 artifacts 证明当前源码、数据、统计和 session 下的实际结果；手工 trace/断点负责 DPHyp 两-Memo 观察。这个简化查询目前不是现成 regression suite，不能把快照称为跨环境固定 golden file。</p></div>
           </div>
-          <div class="callout"><strong>最小确定性例子：</strong><code>CascadesJoinReorderTest</code> 的三表 star join 明确断言 zig-zag 和 bushy exploration 都得到 8 个 plan。它适合先验证“规则怎样扩充 Memo”；Q3 result/shape 再验证结果与优化后物理骨架；DPHyp 和最终 worker 分配分别用 trace 与 <code>EXPLAIN DISTRIBUTED PLAN</code> 手工观察。</div>
-          <p><a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/memo/MemoTest.java">MemoTest.java</a> <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/sqltest/CascadesJoinReorderTest.java">CascadesJoinReorderTest.java</a> <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/sqltest/JoinOrderJobTest.java">JoinOrderJobTest.java</a> <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/jobs/joinorder/hypergraphv2/SubgraphEnumeratorTest.java">SubgraphEnumeratorTest.java</a> <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/properties/RequestPropertyDeriverTest.java">RequestPropertyDeriverTest.java</a> <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/sqltest/SortTest.java">SortTest.java</a> <a class="source" href="../run-fe-ut.sh">run-fe-ut.sh</a> <a class="source" href="../run-regression-test.sh">run-regression-test.sh</a></p>
+          <div class="callout"><strong>最小确定性例子：</strong><code>CascadesJoinReorderTest</code> 的三表 star join 明确断言 zig-zag 和 bushy exploration 都得到 8 个 plan。它适合先验证“规则怎样扩充 Memo”；本查询的 raw artifacts 再负责把这些对象映射到一条真实 SQL。</div>
+          <p><a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/memo/MemoTest.java">MemoTest.java</a> <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/sqltest/CascadesJoinReorderTest.java">CascadesJoinReorderTest.java</a> <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/sqltest/JoinOrderJobTest.java">JoinOrderJobTest.java</a> <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/jobs/joinorder/hypergraphv2/SubgraphEnumeratorTest.java">SubgraphEnumeratorTest.java</a> <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/properties/RequestPropertyDeriverTest.java">RequestPropertyDeriverTest.java</a> <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/sqltest/SortTest.java">SortTest.java</a> <a class="source" href="../run-fe-ut.sh">run-fe-ut.sh</a> <a class="source" href="nereids-cascades-q3/README.md">本查询 artifacts</a></p>
         </section>
 
         <section id="misconceptions">
-          <p class="section-kicker">12 · Source-level corrections</p>
+          <p class="section-kicker">13 · Source-level corrections</p>
           <h2>读 Cascades 源码最常见的十三个误区</h2>
           <div class="table-wrap">
             <table>
@@ -1226,7 +1404,7 @@ SET enable_dphyp_trace = true;</code></pre>
                 <tr><td>所有 Rewrite 都在 JobStack 上按 LIFO 排队</td><td>Rewriter 外层按 batch list 执行；深树 traversal 才进入显式 JobStack。CBO jobs 则由 SimpleJobScheduler 串行 drain。</td></tr>
                 <tr><td><code>RulePromise</code> 决定当前实际执行顺序</td><td>虽然枚举描述 promise priority，当前 SimpleJobScheduler / OptimizeGroupExpressionJob 不按 promise 排序；实际顺序由 rule list 的 push 顺序和 LIFO 决定。</td></tr>
                 <tr><td>DPHyp alternatives 都保留在最终 Memo</td><td>当前实现从 Memo #1 copy-out 最佳 logical tree，rewrite 后释放并重建 Memo #2；最终 Memo 不保留完整 DP table。</td></tr>
-                <tr><td>DPHyp join order 与 root GATHER/TopN 完全联合搜索</td><td>Memo #1 在 ANY 下先选一棵 logical tree；Memo #2 才优化最终 GATHER、TopN 和 enforcer。后者不能重新选回已被 Memo #1 丢弃的 join order。</td></tr>
+                <tr><td>DPHyp join order 与 root GATHER/Sort 完全联合搜索</td><td>Memo #1 在 ANY 下先选一棵 logical tree；Memo #2 才优化最终 GATHER、Sort 和 enforcer。后者不能重新选回已被 Memo #1 丢弃的 join order。</td></tr>
                 <tr><td><code>PhysicalDistribute</code> 就是运行时 Exchange instance</td><td>它是 CBO enforcer；translator 再生成 ExchangeNode / fragments；DistributePlanner 最后分配 worker instances。</td></tr>
                 <tr><td>cost 就是预估执行时间</td><td>当前是 CPU/memory/network 分量的加权比较标尺，用于候选排序；不是毫秒预测，也没有独立 I/O/spill 分量。</td></tr>
               </tbody>
@@ -1288,7 +1466,9 @@ SET enable_dphyp_trace = true;</code></pre>
               <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/properties/RequestPropertyDeriverTest.java">RequestPropertyDeriverTest.java</a>
               <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/properties/ChildOutputPropertyDeriverTest.java">ChildOutputPropertyDeriverTest.java</a>
               <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/sqltest/SortTest.java">SortTest.java</a>
-              <a class="source" href="../regression-test/suites/nereids_tpch_p0/tpch/q3.groovy">TPC-H Q3 regression</a>
+              <a class="source" href="nereids-cascades-q3/query.sql">简化三表 query.sql</a>
+              <a class="source" href="nereids-cascades-q3/README.md">完整 EXPLAIN artifacts</a>
+              <a class="source" href="nereids-cascades-q3/capture.sh">capture.sh</a>
             </div></details>
             <details open><summary>配套总览</summary><div>
               <a class="source" href="nereids-optimizer-learning-guide.html">Nereids optimizer learning guide</a>
@@ -1303,7 +1483,7 @@ SET enable_dphyp_trace = true;</code></pre>
             <li>能从 LIFO push 顺序推断一个 rule、stats、child optimize、parent continuation 的实际执行次序。</li>
             <li>能针对一个 Group 列出多个 required properties，并找到各自 best expression、child requests 和 enforcer。</li>
             <li>能解释 DPHyp Memo #1 → best logical tree → Memo #2，而不会把两个 Memo 当成一个。</li>
-            <li>能沿 Q3 解释 Memo #1 中 join-local order/method/distribution cost 与 Memo #2 中 TopN/GATHER/enforcer cost 的联系和不可回溯边界。</li>
+            <li>能沿简化三表查询解释 Memo #1 中 join-local order/method/distribution cost 与 Memo #2 中 Sort/GATHER/enforcer cost 的联系和不可回溯边界。</li>
             <li>能区分 PhysicalDistribute、ExchangeNode、PlanFragment 和 worker assignment。</li>
           </ul>
           <p class="tiny"><span class="fact">源码事实</span>均按当前工作区 HEAD 核对；“五平面”与示例 Group 名是教学抽象。源码行号会漂移，因此文中以稳定路径、类名和方法名为导航。</p>
