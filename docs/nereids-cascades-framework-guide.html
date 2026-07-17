@@ -1,0 +1,1316 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Apache Doris Nereids Cascades 框架源码教学：五平面组件图、Plan/Expression、Rule、Memo、CascadesContext、Job 调度、物理属性与 DPHyp。">
+  <title>Doris Nereids Cascades 框架源码教学</title>
+  <style>
+    :root {
+      --ink: #17243a;
+      --muted: #5c6c80;
+      --paper: #f3f0e8;
+      --surface: #fffdf8;
+      --surface-2: #edf5f2;
+      --line: #d6d1c5;
+      --deep: #17324d;
+      --deep-2: #244963;
+      --teal: #0d766e;
+      --teal-soft: #d8efea;
+      --amber: #ad5811;
+      --amber-soft: #f7e7ce;
+      --red: #a7463b;
+      --violet: #65558f;
+      --blue-soft: #e4edf6;
+      --code: #102233;
+      --code-ink: #e8f1f5;
+      --diagram-edge: #38576d;
+      --shadow: 0 18px 55px rgba(23, 50, 77, .10);
+      --radius: 18px;
+      --content: 1180px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 7% 2%, rgba(13, 118, 110, .11), transparent 27rem),
+        radial-gradient(circle at 95% 7%, rgba(173, 88, 17, .10), transparent 23rem),
+        var(--paper);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      line-height: 1.72;
+    }
+
+    a { color: var(--teal); text-decoration-thickness: .08em; text-underline-offset: .18em; }
+    a:hover { color: var(--amber); }
+    a:focus-visible, summary:focus-visible { outline: 3px solid var(--amber); outline-offset: 3px; }
+    code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    code {
+      padding: .12em .38em;
+      border-radius: .35em;
+      background: rgba(23, 50, 77, .08);
+      font-size: .91em;
+      overflow-wrap: anywhere;
+    }
+    pre {
+      margin: 1rem 0;
+      padding: 1.15rem 1.25rem;
+      color: var(--code-ink);
+      background: var(--code);
+      border-radius: 14px;
+      overflow: auto;
+      line-height: 1.58;
+      box-shadow: inset 0 1px rgba(255, 255, 255, .08);
+    }
+    pre code { padding: 0; color: inherit; background: transparent; font-size: .87rem; }
+    h1, h2, h3, h4 { color: var(--deep); line-height: 1.25; text-wrap: balance; }
+    h1 { margin: .25rem 0 1rem; font-size: clamp(2.35rem, 6vw, 4.8rem); letter-spacing: -.045em; }
+    h2 { margin: 0 0 1rem; font-size: clamp(1.75rem, 3vw, 2.5rem); letter-spacing: -.025em; }
+    h3 { margin-top: 1.8rem; font-size: 1.28rem; }
+    h4 { margin-bottom: .45rem; font-size: 1rem; letter-spacing: .025em; }
+    p { margin: .65rem 0 1rem; }
+    ul, ol { padding-left: 1.35rem; }
+    li + li { margin-top: .42rem; }
+
+    .skip-link {
+      position: fixed;
+      top: .7rem;
+      left: .7rem;
+      z-index: 30;
+      transform: translateY(-170%);
+      padding: .6rem .9rem;
+      color: #fff;
+      background: var(--deep);
+      border-radius: .5rem;
+    }
+    .skip-link:focus { transform: translateY(0); }
+    .layout { min-height: 100vh; }
+    .sidebar {
+      display: none;
+      position: fixed;
+      inset: 0 auto 0 0;
+      z-index: 10;
+      width: 286px;
+      padding: 2rem 1.35rem 1.4rem;
+      color: #dce9ee;
+      background: var(--deep);
+      overflow-y: auto;
+    }
+    .side-brand { margin-bottom: 1.4rem; }
+    .side-brand strong { display: block; color: #fff; font-size: 1.13rem; }
+    .side-brand span { display: block; margin-top: .35rem; color: #a9c4cc; font-size: .8rem; }
+    .sidebar nav a {
+      display: block;
+      margin: .1rem 0;
+      padding: .43rem .62rem;
+      border-radius: .55rem;
+      color: #c9dce2;
+      text-decoration: none;
+      font-size: .84rem;
+    }
+    .sidebar nav a:hover { color: #fff; background: rgba(255, 255, 255, .10); }
+    .sidebar .side-note {
+      margin-top: 1.4rem;
+      padding: .8rem;
+      border: 1px solid rgba(255, 255, 255, .13);
+      border-radius: .7rem;
+      color: #a9c4cc;
+      font-size: .74rem;
+    }
+
+    main { min-width: 0; }
+    .hero {
+      position: relative;
+      padding: clamp(3.4rem, 9vw, 7.2rem) max(1.2rem, calc((100vw - var(--content)) / 2)) 4rem;
+      overflow: hidden;
+    }
+    .hero::after {
+      content: "C";
+      position: absolute;
+      right: max(1rem, calc((100vw - var(--content)) / 2));
+      top: -5.1rem;
+      z-index: -1;
+      color: rgba(23, 50, 77, .045);
+      font: 800 clamp(19rem, 40vw, 36rem)/1 Georgia, serif;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: .55rem;
+      margin-bottom: .9rem;
+      color: var(--teal);
+      font-weight: 760;
+      letter-spacing: .09em;
+      text-transform: uppercase;
+      font-size: .76rem;
+    }
+    .eyebrow::before { content: ""; width: 2.2rem; height: 3px; background: var(--amber); }
+    .hero .lede { max-width: 880px; color: var(--muted); font-size: clamp(1.05rem, 2vw, 1.35rem); }
+    .meta-row { display: flex; flex-wrap: wrap; gap: .55rem; margin: 1.65rem 0; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: .34rem .68rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: var(--surface);
+      font-size: .78rem;
+    }
+    .hero-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .9rem; margin-top: 2.25rem; }
+    .truth {
+      padding: 1.05rem;
+      border: 1px solid rgba(13, 118, 110, .2);
+      border-radius: 13px;
+      background: rgba(255, 253, 248, .82);
+      box-shadow: var(--shadow);
+    }
+    .truth b { display: block; margin-bottom: .3rem; color: var(--teal); }
+    .truth span { color: var(--muted); font-size: .9rem; }
+
+    .content { width: min(var(--content), calc(100% - 2.4rem)); margin: 0 auto 6rem; }
+    section {
+      scroll-margin-top: 1.4rem;
+      margin: 0 0 1.4rem;
+      padding: clamp(1.3rem, 3vw, 2.5rem);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255, 253, 248, .95);
+      box-shadow: var(--shadow);
+    }
+    .section-kicker { margin: 0 0 .4rem; color: var(--amber); font-weight: 800; font-size: .75rem; letter-spacing: .13em; text-transform: uppercase; }
+    .section-intro { max-width: 930px; color: var(--muted); font-size: 1.02rem; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+    .grid-5 { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .72rem; }
+    .card { padding: 1rem 1.1rem; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); }
+    .card h3, .card h4 { margin-top: .15rem; }
+    .card p:last-child { margin-bottom: .2rem; }
+    .plane-card { position: relative; padding-top: 2.9rem; }
+    .plane-no {
+      position: absolute;
+      top: .85rem;
+      left: 1rem;
+      display: grid;
+      place-items: center;
+      width: 1.65rem;
+      height: 1.65rem;
+      border-radius: 50%;
+      color: #fff;
+      background: var(--teal);
+      font-size: .78rem;
+      font-weight: 800;
+    }
+    .plane-card:nth-child(2) .plane-no { background: #356381; }
+    .plane-card:nth-child(3) .plane-no { background: var(--violet); }
+    .plane-card:nth-child(4) .plane-no { background: var(--amber); }
+    .plane-card:nth-child(5) .plane-no { background: var(--red); }
+    .callout {
+      margin: 1.2rem 0;
+      padding: 1rem 1.15rem;
+      border-left: 4px solid var(--teal);
+      border-radius: 0 12px 12px 0;
+      background: var(--surface-2);
+    }
+    .callout.warn { border-left-color: var(--amber); background: var(--amber-soft); }
+    .callout.red { border-left-color: var(--red); background: rgba(167, 70, 59, .10); }
+    .callout strong { color: var(--deep); }
+    .fact { color: var(--teal); font-weight: 720; }
+    .concept { color: var(--amber); font-weight: 720; }
+    .tiny { color: var(--muted); font-size: .78rem; }
+
+    .table-wrap { margin: 1rem 0; overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+    table { width: 100%; border-collapse: collapse; background: var(--surface); font-size: .9rem; }
+    th, td { padding: .72rem .8rem; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; }
+    th { color: var(--deep); background: var(--teal-soft); white-space: nowrap; }
+    tr:last-child td { border-bottom: 0; }
+    td:first-child { font-weight: 680; }
+    .source {
+      display: inline-block;
+      margin: .12rem .1rem .12rem 0;
+      padding: .16rem .45rem;
+      border: 1px solid rgba(13, 118, 110, .24);
+      border-radius: .45rem;
+      color: var(--teal);
+      background: rgba(216, 239, 234, .45);
+      text-decoration: none;
+      font: .76rem/1.45 "SFMono-Regular", Consolas, monospace;
+      overflow-wrap: anywhere;
+    }
+    .source:hover { border-color: var(--amber); background: var(--amber-soft); }
+
+    .diagram-scroll { margin: 1.25rem 0; overflow-x: auto; border: 1px solid var(--line); border-radius: 15px; background: var(--surface); }
+    .diagram, .architecture-svg, .memo-svg, .jobs-svg { display: block; width: 100%; height: auto; min-width: 900px; }
+    svg .panel { fill: #fffdf8; stroke: #d6d1c5; stroke-width: 1.5; }
+    svg .box { fill: #fffdf8; stroke: #0d766e; stroke-width: 1.7; }
+    svg .semantic { fill: #e8f3ef; stroke: #0d766e; stroke-width: 2; }
+    svg .equiv { fill: #e5edf5; stroke: #356381; stroke-width: 2; }
+    svg .physical { fill: #eee9f7; stroke: #65558f; stroke-width: 2; }
+    svg .estimate { fill: #f7ead7; stroke: #ad5811; stroke-width: 2; }
+    svg .runtime { fill: #f3e5e3; stroke: #a7463b; stroke-width: 2; }
+    svg .memo-box { fill: #fffdf8; stroke: #356381; stroke-width: 1.7; }
+    svg .job-box { fill: #fffdf8; stroke: #65558f; stroke-width: 1.7; }
+    svg .enforcer-box { fill: #f7ead7; stroke: #ad5811; stroke-width: 1.7; }
+    svg .plane-1 { fill: #e8f3ef; stroke: #0d766e; stroke-width: 2; }
+    svg .plane-2 { fill: #e5edf5; stroke: #356381; stroke-width: 2; }
+    svg .plane-3 { fill: #f7ead7; stroke: #ad5811; stroke-width: 2; }
+    svg .plane-4 { fill: #eee9f7; stroke: #65558f; stroke-width: 2; }
+    svg .plane-5 { fill: #f3e5e3; stroke: #a7463b; stroke-width: 2; }
+    svg .node { fill: #fffdf8; stroke: #537184; stroke-width: 1.4; }
+    svg .node-strong { fill: #17324d; stroke: #17324d; stroke-width: 1.4; }
+    svg .title { fill: #17324d; font: 700 17px sans-serif; }
+    svg .label { fill: #17324d; font: 700 14px sans-serif; text-anchor: middle; }
+    svg .label-left { fill: #17324d; font: 700 14px sans-serif; }
+    svg .sub { fill: #5c6c80; font: 12px sans-serif; text-anchor: middle; }
+    svg .sub-left { fill: #5c6c80; font: 12px sans-serif; }
+    svg .micro { fill: #5c6c80; font: 11px sans-serif; text-anchor: middle; }
+    svg .on-dark { fill: #fff; font: 700 14px sans-serif; text-anchor: middle; }
+    svg .edge { fill: none; stroke: var(--diagram-edge); stroke-width: 2; marker-end: url(#arrowhead); }
+    svg .edge-dash { fill: none; stroke: var(--diagram-edge); stroke-width: 1.7; stroke-dasharray: 6 5; marker-end: url(#arrowhead); }
+    svg .edge-thin { fill: none; stroke: var(--diagram-edge); stroke-width: 1.35; marker-end: url(#arrowhead); }
+    svg .arrow-head { fill: var(--diagram-edge); }
+    svg .arrow-head-soft { fill: #8797a6; }
+
+    .flow-strip {
+      display: flex;
+      align-items: stretch;
+      gap: .5rem;
+      margin: 1.4rem 0;
+      overflow-x: auto;
+      padding: .5rem .15rem 1rem;
+      list-style: none;
+      scroll-snap-type: x proximity;
+      scrollbar-color: var(--teal) transparent;
+    }
+    .flow-node {
+      flex: 0 0 176px;
+      min-height: 118px;
+      padding: .8rem;
+      border: 1px solid rgba(23, 50, 77, .18);
+      border-top: 4px solid var(--teal);
+      border-radius: 12px;
+      background: var(--surface);
+      scroll-snap-align: start;
+    }
+    .flow-node:nth-child(4n + 3) { border-top-color: var(--amber); }
+    .flow-node b { display: block; color: var(--deep); font-size: .9rem; }
+    .flow-node span { display: block; margin-top: .35rem; color: var(--muted); font-size: .76rem; line-height: 1.45; }
+    .arrow { display: grid; place-items: center; flex: 0 0 20px; color: var(--amber); font-size: 1.35rem; font-weight: 800; }
+
+    .object-row { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; gap: .55rem; align-items: stretch; margin: 1.1rem 0; }
+    .object-box { padding: .92rem; border: 2px solid var(--teal); border-radius: 12px; background: var(--surface); text-align: center; }
+    .object-box b { display: block; color: var(--deep); }
+    .object-box small { display: block; margin-top: .3rem; color: var(--muted); }
+    .object-arrow { display: grid; place-items: center; color: var(--amber); font-size: 1.35rem; font-weight: 800; }
+
+    .object-tree { margin: 1rem 0; padding: 1rem 1.15rem; border-left: 4px solid var(--deep-2); border-radius: 0 12px 12px 0; background: var(--blue-soft); }
+    .object-tree pre { margin: 0; padding: 0; color: var(--ink); background: transparent; box-shadow: none; }
+    .property-key { display: inline-flex; gap: .35rem; flex-wrap: wrap; }
+    .pill { padding: .15rem .5rem; border-radius: 999px; color: var(--deep); background: var(--teal-soft); font-size: .76rem; font-weight: 680; }
+    .pill.amber { background: var(--amber-soft); }
+    details { margin: .8rem 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+    summary { padding: .75rem .9rem; color: var(--deep); font-weight: 720; cursor: pointer; }
+    details > div { padding: 0 .9rem .9rem; }
+    .steps { counter-reset: lesson; list-style: none; padding-left: 0; }
+    .steps > li { position: relative; margin: 1rem 0; padding: .95rem 1rem .95rem 3.7rem; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+    .steps > li::before {
+      counter-increment: lesson;
+      content: counter(lesson);
+      position: absolute;
+      left: .9rem;
+      top: .9rem;
+      display: grid;
+      place-items: center;
+      width: 2rem;
+      height: 2rem;
+      border-radius: 50%;
+      color: #fff;
+      background: var(--teal);
+      font-weight: 800;
+    }
+    .checklist { list-style: none; padding-left: 0; }
+    .checklist li { position: relative; padding-left: 1.65rem; }
+    .checklist li::before { content: "□"; position: absolute; left: 0; color: var(--teal); font-weight: 800; }
+    footer { padding: 2.5rem 1.2rem 4rem; color: var(--muted); text-align: center; font-size: .82rem; }
+
+    @media (min-width: 1080px) {
+      .sidebar { display: block; }
+      main, footer { margin-left: 286px; }
+      .hero { padding-left: max(2rem, calc((100vw - 286px - var(--content)) / 2)); padding-right: max(2rem, calc((100vw - 286px - var(--content)) / 2)); }
+      .content { width: min(var(--content), calc(100% - 4rem)); }
+      .hero::after { right: 2rem; }
+    }
+    @media (max-width: 820px) {
+      .hero-grid, .grid-2, .grid-3, .grid-5 { grid-template-columns: 1fr; }
+      .object-row { grid-template-columns: 1fr; }
+      .object-arrow { transform: rotate(90deg); }
+      .flow-strip { padding-right: 1rem; }
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --ink: #dbe8ed; --muted: #a9bac5; --paper: #0d1720; --surface: #13232d;
+        --surface-2: #14342f; --line: #2c424d; --deep: #d7edf1; --deep-2: #b4d6df;
+        --teal: #65d2c5; --teal-soft: #173b38; --amber: #f4ad61; --amber-soft: #49331f;
+        --code: #091017; --diagram-edge: #8edbd2; --blue-soft: #172e3c;
+      }
+      body { background: radial-gradient(circle at 8% 3%, rgba(101, 210, 197, .08), transparent 27rem), var(--paper); }
+      section, .truth { background: rgba(19, 35, 45, .95); }
+      svg .panel, svg .node, svg .box, svg .memo-box, svg .job-box { fill: #13232d; stroke: #43606e; }
+      svg .semantic { fill: #14342f; stroke: #65d2c5; }
+      svg .equiv { fill: #172e3c; stroke: #7db8d6; }
+      svg .physical { fill: #302941; stroke: #b7a6e2; }
+      svg .estimate, svg .enforcer-box { fill: #49331f; stroke: #f4ad61; }
+      svg .runtime { fill: #3e2929; stroke: #e28f85; }
+      svg .plane-1 { fill: #14342f; stroke: #65d2c5; }
+      svg .plane-2 { fill: #172e3c; stroke: #7db8d6; }
+      svg .plane-3 { fill: #49331f; stroke: #f4ad61; }
+      svg .plane-4 { fill: #302941; stroke: #b7a6e2; }
+      svg .plane-5 { fill: #3e2929; stroke: #e28f85; }
+      svg .node-strong { fill: #092a37; stroke: #65d2c5; }
+      svg .title, svg .label, svg .label-left { fill: #d7edf1; }
+      svg .sub, svg .sub-left, svg .micro { fill: #a9bac5; }
+      code { background: rgba(255, 255, 255, .10); }
+    }
+    @media print {
+      :root {
+        --ink: #111; --muted: #333; --paper: #fff; --surface: #fff; --surface-2: #f2f2f2;
+        --line: #aaa; --deep: #111; --deep-2: #17324d; --teal: #075e58; --teal-soft: #e7f1ef;
+        --amber: #743800; --amber-soft: #f7e7ce; --code: #f2f2f2; --code-ink: #111;
+        --diagram-edge: #17324d; --blue-soft: #eef3f7;
+      }
+      .sidebar { display: none; }
+      main, footer { margin-left: 0; }
+      body { background: #fff; color: #111; }
+      section { break-inside: auto; box-shadow: none; }
+      pre { color: var(--code-ink); background: var(--code); white-space: pre-wrap; overflow-wrap: anywhere; }
+      .flow-strip { flex-wrap: wrap; overflow: visible; }
+      .flow-node { flex: 1 1 22%; min-height: auto; }
+      .arrow { display: none; }
+      details > :not(summary) { display: block !important; }
+      .diagram-scroll { overflow: visible; }
+      .diagram, .architecture-svg, .memo-svg, .jobs-svg { min-width: 0; }
+      a { color: #111; text-decoration: none; }
+      .hero { padding-top: 2rem; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">跳到正文</a>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="side-brand">
+        <strong>Nereids Cascades 源码课</strong>
+        <span>Phase 1 · Framework &amp; Search</span>
+      </div>
+      <nav aria-label="章节导航">
+        <a href="#goal">学习目标与边界</a>
+        <a href="#planes">1. 八模块到五平面</a>
+        <a href="#case">2. 三表实验载体</a>
+        <a href="#ir">3. Plan 与 Expression</a>
+        <a href="#rules">4. Rule 与三类变换</a>
+        <a href="#memo">5. Memo 对象模型</a>
+        <a href="#context">6. CascadesContext</a>
+        <a href="#jobs">7. Job 与 LIFO 调度</a>
+        <a href="#properties">8. 属性、成本、Enforcer</a>
+        <a href="#dphyp">9. DPHyp 如何进入 Cascades</a>
+        <a href="#distributed">10. 到分布式执行计划</a>
+        <a href="#lab">11. 实验记录手册</a>
+        <a href="#misconceptions">12. 易错边界</a>
+        <a href="#index">源码与测试索引</a>
+      </nav>
+      <div class="side-note">
+        源码基线：<code>daf8eaa464cb</code><br>
+        文档生成：2026-07-17<br>
+        所有链接均指向当前仓库内源码。
+      </div>
+    </aside>
+
+    <main id="main-content">
+      <header class="hero">
+        <div class="eyebrow">Source-level optimizer foundations</div>
+        <h1>掌握 Doris<br>Cascades 框架</h1>
+        <p class="lede">用五个平面建立全局坐标，再沿一条 TPC-H Q3 三表查询穿过 LogicalPlan、Rule、Memo、Job、物理属性、Cost、Enforcer、DPHyp 和 PlanFragment。目标不是背类名，而是能从源码解释“候选怎样产生、怎样共享、怎样被属性约束、怎样胜出”。</p>
+        <div class="meta-row">
+          <span class="badge">当前 HEAD 源码核对</span>
+          <span class="badge">独立 HTML · 无外部依赖</span>
+          <span class="badge">组件图 + 调用链 + 断点</span>
+          <span class="badge">教学 SQL 来自 Doris regression</span>
+        </div>
+        <div class="hero-grid">
+          <div class="truth"><b>等价性由规则负责</b><span>Memo 负责存储和去重，不会证明两个关系表达式在 bag/null/correlation 语义下真的等价。</span></div>
+          <div class="truth"><b>Best 必须带属性下标</b><span>同一 Group 的最优解是 Best(G, required property)，不是脱离分布与顺序的单一计划。</span></div>
+          <div class="truth"><b>物理候选与属性耦合搜索</b><span>在同一个 Memo 搜索阶段，join method、child distribution、Sort/Distribute enforcer 共同进入成本比较；DPHyp 的两-Memo 边界另见第 9 节。</span></div>
+        </div>
+      </header>
+
+      <div class="content">
+        <section id="goal">
+          <p class="section-kicker">Phase 1 · Contract</p>
+          <h2>第一阶段结束时，你应当能回答什么</h2>
+          <p class="section-intro">本文是已有<a href="nereids-optimizer-learning-guide.html">《Nereids 优化器源码学习指南》</a>的 Cascades 深挖篇。前一篇建立端到端地图；这一篇只盯住 Memo 搜索内核和它与分布式属性的接口。</p>
+          <div class="grid-3">
+            <div class="card"><h3>对象层</h3><p>区分 <code>Plan</code>、标量 <code>Expression</code>、<code>GroupExpression</code>、<code>GroupPlan</code>，并能画出 Memo DAG。</p></div>
+            <div class="card"><h3>调度层</h3><p>从 <code>OptimizeGroupJob</code> 追到 rule apply、stats、child optimization、cost 与 enforcer continuation。</p></div>
+            <div class="card"><h3>分布式搜索层</h3><p>解释 DPHyp 的 join order 与 Hash/NLJ、Broadcast/Shuffle/Gather、Sort 如何跨 Memo #1 / #2 两阶段组合并产生最终 cost。</p></div>
+          </div>
+          <div class="callout warn"><strong>术语校正：</strong>本文保留“task scheduling”作为优化器教材里的泛称，但当前 Doris 源码没有一个对应的 <code>Task</code> 类型；实际调度单位是 <code>Job</code>。同样，当前实现注册了 <code>PhysicalHashJoin</code> 与 <code>PhysicalNestedLoopJoin</code>，没有 <code>PhysicalMergeJoin</code>。后文会始终按源码事实描述。</div>
+        </section>
+
+        <section id="planes">
+          <p class="section-kicker">01 · Architecture</p>
+          <h2>从八个模块，归并为五个协作平面</h2>
+          <p class="section-intro">CockroachDB 的八模块适合做功能清单；五平面更适合学习“责任边界”。映射是多对多的：例如 Properties 同时服务语义合法性和物理搜索，Search 同时操作 Memo 与 required property。</p>
+
+          <div class="grid-5">
+            <div class="card plane-card"><span class="plane-no">1</span><h3>语义正确性</h3><p>binding、类型、nullability、DataTrait、join/aggregate/window/CTE 语义，以及规则前置条件。</p></div>
+            <div class="card plane-card"><span class="plane-no">2</span><h3>等价表达与规则</h3><p>Plan IR、Pattern、Rule、Group、GroupExpression、Memo、去重与规则调度。</p></div>
+            <div class="card plane-card"><span class="plane-no">3</span><h3>物理属性与搜索</h3><p>required/derived properties、implementation、child requirements、enforcer 与 best-plan table。</p></div>
+            <div class="card plane-card"><span class="plane-no">4</span><h3>估计</h3><p>表/列统计、基数估计与 cost dimensions 共同驱动选择；通用模型常谈 CPU/I/O/network/memory，当前 Doris <code>Cost</code> 实装 CPU/memory/network。</p></div>
+            <div class="card plane-card"><span class="plane-no">5</span><h3>反馈与运行</h3><p>物理树翻译、fragment/worker 分配、runtime profile，以及 HBO 等跨执行反馈。</p></div>
+          </div>
+
+          <div class="diagram-scroll" aria-label="Doris 优化器五平面组件图">
+            <svg class="diagram" viewBox="0 0 1160 760" role="img" aria-labelledby="planes-title planes-desc">
+              <title id="planes-title">Doris Nereids 优化器五平面组件图</title>
+              <desc id="planes-desc">SQL 和元数据进入语义正确性平面，再进入等价表达与规则平面；统计进入估计平面；物理属性搜索综合 Memo 与估计结果；最终计划进入翻译和运行平面，运行反馈可回到估计平面。</desc>
+              <defs>
+                <marker id="planes-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path class="arrow-head" d="M0,0 L0,6 L9,3 z"/></marker>
+                <marker id="planes-arrow-soft" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path class="arrow-head-soft" d="M0,0 L0,6 L9,3 z"/></marker>
+              </defs>
+
+              <rect class="box" x="70" y="28" width="205" height="68" rx="12"/>
+              <text class="label" x="172" y="57">SQL + Catalog</text>
+              <text class="sub" x="172" y="80">parser · metadata · session</text>
+              <rect class="box" x="470" y="28" width="205" height="68" rx="12"/>
+              <text class="label" x="572" y="57">Statistics</text>
+              <text class="sub" x="572" y="80">row count · NDV · histogram</text>
+              <rect class="box" x="870" y="28" width="205" height="68" rx="12"/>
+              <text class="label" x="972" y="57">Runtime profile</text>
+              <text class="sub" x="972" y="80">actual rows · runtime shape</text>
+
+              <rect class="semantic" x="70" y="132" width="1005" height="92" rx="16"/>
+              <text class="label-left" x="95" y="164">1 · 语义正确性平面</text>
+              <text class="sub-left" x="95" y="190">Analyzer / binding / type &amp; nullability</text>
+              <text class="sub-left" x="405" y="190">LogicalProperties + DataTrait</text>
+              <text class="sub-left" x="720" y="190">Rule pattern conditions / legality checks</text>
+
+              <rect class="equiv" x="70" y="254" width="1005" height="105" rx="16"/>
+              <text class="label-left" x="95" y="286">2 · 等价表达与规则平面</text>
+              <text class="sub-left" x="95" y="316">LogicalPlan / Expression</text>
+              <text class="sub-left" x="350" y="316">Rule / RuleType / Pattern</text>
+              <text class="sub-left" x="660" y="316">Memo → Group → GroupExpression</text>
+              <text class="micro" x="890" y="337">commute · assoc · exchange · DPHyp</text>
+
+              <rect class="estimate" x="70" y="389" width="1005" height="88" rx="16"/>
+              <text class="label-left" x="95" y="421">4 · 估计平面</text>
+              <text class="sub-left" x="95" y="449">DeriveStatsJob → StatsCalculator</text>
+              <text class="sub-left" x="480" y="449">CostCalculator / CostModel</text>
+              <text class="sub-left" x="785" y="449">cardinality 是 cost 输入，不是 cost 本身</text>
+
+              <rect class="physical" x="70" y="507" width="1005" height="106" rx="16"/>
+              <text class="label-left" x="95" y="539">3 · 物理属性与搜索平面</text>
+              <text class="sub-left" x="95" y="570">JobStack + OptimizeGroup*</text>
+              <text class="sub-left" x="385" y="570">Request / Derived PhysicalProperties</text>
+              <text class="sub-left" x="750" y="570">CostAndEnforcerJob → Best(G, P)</text>
+              <text class="micro" x="875" y="594">Hash/NL join · sort · broadcast/shuffle/gather</text>
+
+              <rect class="runtime" x="70" y="643" width="1005" height="84" rx="16"/>
+              <text class="label-left" x="95" y="676">5 · 反馈与运行平面</text>
+              <text class="sub-left" x="95" y="704">PhysicalPlanTranslator → PlanFragment / ExchangeNode</text>
+              <text class="sub-left" x="620" y="704">DistributePlanner → worker / instance · HBO feedback</text>
+
+              <path d="M172 96 V124" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#planes-arrow)"/>
+              <path d="M572 96 V380" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#planes-arrow)"/>
+              <path d="M972 96 C1100 110 1110 410 1078 425" fill="none" stroke="#8797a6" stroke-width="1.7" stroke-dasharray="6 5" marker-end="url(#planes-arrow-soft)"/>
+              <path d="M572 224 V246" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#planes-arrow)"/>
+              <path d="M390 359 V499" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#planes-arrow)"/>
+              <path d="M760 477 V499" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#planes-arrow)"/>
+              <path d="M572 613 V635" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#planes-arrow)"/>
+            </svg>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>CockroachDB 模块</th><th>Doris 中的主要源码锚点</th><th>归入平面</th><th>阅读时要避免的误解</th></tr></thead>
+              <tbody>
+                <tr><td>Properties</td><td><code>LogicalProperties</code>、<code>DataTrait</code>、<code>PhysicalProperties</code></td><td>1 + 3</td><td>逻辑属性描述输出与语义特征；物理属性描述顺序和分布，二者不能混用。</td></tr>
+                <tr><td>Stats</td><td><code>DeriveStatsJob</code>、<code>StatsCalculator</code>、<code>Statistics</code></td><td>4</td><td>统计附着在 Group/表达式计算链上，不是直接选 join tree 的独立模块。</td></tr>
+                <tr><td>Cost Model</td><td><code>CostCalculator</code>、<code>CostModel</code>、<code>Cost</code></td><td>4</td><td>总代价由节点成本和子树成本组合；不能用 row count 求和代替。</td></tr>
+                <tr><td>Memo</td><td><code>Memo</code>、<code>Group</code>、<code>GroupExpression</code></td><td>2</td><td>Group 是等价类；GroupExpression 是算子加子 Group，不是一棵完整候选树。</td></tr>
+                <tr><td>Transforms</td><td><code>Rule</code>、<code>RuleType</code>、<code>RuleSet</code>、pattern DSL</td><td>1 + 2</td><td>结构匹配不等于语义合法；合法性由 rule 条件与语义信息共同保证。</td></tr>
+                <tr><td>Prep</td><td><code>Analyzer</code>、<code>Rewriter</code>、<code>PlanPreprocessors</code> / <code>PlanPostProcessors</code></td><td>1 + 3</td><td>Doris 没有与该名字一一对应的单一 package。</td></tr>
+                <tr><td>Rewrite</td><td><code>Rewriter</code>、各类 rewrite <code>Job</code></td><td>1 + 2</td><td>多数 normalization 在树上发生；exploration 才是保留等价候选。</td></tr>
+                <tr><td>Search</td><td><code>Optimizer</code>、cascades jobs、properties、cost/enforcer</td><td>2 + 3</td><td>不是只搜索 join order，而是搜索算子、子属性、enforcer 和成本的组合。</td></tr>
+                <tr><td>运行反馈（扩展）</td><td><code>PhysicalPlanTranslator</code>、<code>DistributePlanner</code>、HBO</td><td>5</td><td>这是五平面模型补入的系统闭环，不强行塞进上述八模块。</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p><a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/LogicalProperties.java">LogicalProperties.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/DataTrait.java">DataTrait.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/PhysicalProperties.java">PhysicalProperties.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/executor/Optimizer.java">Optimizer.java</a></p>
+        </section>
+
+        <section id="case">
+          <p class="section-kicker">02 · One query, many observations</p>
+          <h2>实验主线：仓库内的 TPC-H Q3</h2>
+          <p class="section-intro">Q3 同时包含三表 join、filter、aggregate、ORDER BY 和 LIMIT，恰好覆盖 logical normalization、join reorder、join implementation、distribution、两阶段 sort 与最终成本。下面 SQL 直接来自 Doris regression suite。</p>
+          <pre><code>SELECT
+    l_orderkey,
+    sum(l_extendedprice * (1 - l_discount)) AS revenue,
+    o_orderdate,
+    o_shippriority
+FROM customer, orders, lineitem
+WHERE c_mktsegment = 'BUILDING'
+  AND c_custkey = o_custkey
+  AND l_orderkey = o_orderkey
+  AND o_orderdate &lt; DATE '1995-03-15'
+  AND l_shipdate &gt; DATE '1995-03-15'
+GROUP BY l_orderkey, o_orderdate, o_shippriority
+ORDER BY revenue DESC, o_orderdate
+LIMIT 10;</code></pre>
+          <p><a class="source" href="../regression-test/suites/nereids_tpch_p0/tpch/q3.groovy">nereids_tpch_p0/tpch/q3.groovy</a> <a class="source" href="../regression-test/suites/shape_check/tpch_sf1000/shape/q3.groovy">shape_check/.../q3.groovy</a> <a class="source" href="../regression-test/data/shape_check/tpch_sf1000/shape/q3.out">shape_check/.../q3.out</a></p>
+
+          <h3>先建立三张“快照”，不要一上来只看最终 EXPLAIN</h3>
+          <div class="grid-3">
+            <div class="card"><h4>初始 logical tree</h4><p>parser 产出的未绑定树：关系、slot、函数仍可能是 unbound；逗号连接和 WHERE 谓词尚未呈现最终 join 结构。</p></div>
+            <div class="card"><h4>analyzed / normalized tree</h4><p>表列和类型已绑定；rewrite 完成谓词下推、project/aggregate 规范化，并为 join reorder 准备稳定结构。</p></div>
+            <div class="card"><h4>Memo + physical tree</h4><p>Group 中出现 logical alternatives、physical implementations、enforcers 和按 property 记录的 lowest plans。</p></div>
+          </div>
+          <pre><code>SET enable_nereids_planner = true;
+SET enable_fallback_to_original_planner = false;
+
+EXPLAIN PARSED PLAN     &lt;Q3&gt;;
+EXPLAIN ANALYZED PLAN   &lt;Q3&gt;;
+EXPLAIN LOGICAL PLAN    &lt;Q3&gt;;
+EXPLAIN LOGICAL PLAN PROCESS &lt;Q3&gt;;
+EXPLAIN MEMO PLAN       &lt;Q3&gt;;
+EXPLAIN PHYSICAL PLAN   &lt;Q3&gt;;
+EXPLAIN DISTRIBUTED PLAN &lt;Q3&gt;;</code></pre>
+          <div class="callout"><strong>为什么选它：</strong>当前 shape fixture 的关键骨架是 <code>PhysicalTopN[MERGE_SORT] → PhysicalDistribute[GATHER] → PhysicalTopN[LOCAL_SORT]</code>，下方有两个 <code>PhysicalHashJoin</code>；一个 colocated，一个 broadcast。这不是抽象示意，而是仓库维护的可回归计划形状。</div>
+          <pre><code>PhysicalResultSink
+└─ PhysicalTopN[MERGE_SORT]
+   └─ PhysicalDistribute[GATHER]
+      └─ PhysicalTopN[LOCAL_SORT]
+         └─ hashAgg[GLOBAL]
+            └─ hashJoin(lineitem ⋈ (orders ⋈ customer), colocated)
+               ├─ lineitem
+               └─ hashJoin(orders ⋈ customer, broadcast)
+                  ├─ orders
+                  └─ customer</code></pre>
+          <p class="tiny">计划形状依赖表分桶、统计、session variable 和集群条件；实验目标是解释当前候选为何胜出，而不是把这一棵树当成所有环境的固定答案。</p>
+        </section>
+
+        <section id="ir">
+          <p class="section-kicker">03 · Intermediate representation</p>
+          <h2>Plan 与 Expression：两棵互相引用、职责不同的树</h2>
+          <div class="object-row" aria-label="Plan 节点与标量表达式关系">
+            <div class="object-box"><b>Plan tree</b><small>operator + child plans<br>Filter / Join / Aggregate / Sort</small></div>
+            <div class="object-arrow" aria-hidden="true">→</div>
+            <div class="object-box"><b>Plan#getExpressions()</b><small>当前算子持有的谓词、投影、排序键、聚合函数</small></div>
+            <div class="object-arrow" aria-hidden="true">→</div>
+            <div class="object-box"><b>Expression tree</b><small>EqualTo / And / Slot / Literal / Function</small></div>
+          </div>
+          <p><code>Plan</code> 和 <code>Expression</code> 都是树节点，但优化器不能把它们混成一种 IR。Plan 的边表示关系代数算子的输入；Expression 的边表示标量计算。一个 <code>LogicalFilter</code> 有一个 Plan child，同时持有一棵或多棵 predicate expression tree。</p>
+
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>对象</th><th>源码责任</th><th>关键状态</th><th>在 Q3 中的例子</th></tr></thead>
+              <tbody>
+                <tr><td><code>Plan</code></td><td>所有逻辑/物理计划节点的统一接口；暴露 children、expressions、output、input slots、logical properties 和 memo 快速引用。</td><td><code>PlanType</code>、children、<code>Optional&lt;GroupExpression&gt;</code></td><td>Join、Filter、Aggregate、TopN</td></tr>
+                <tr><td><code>LogicalPlan</code></td><td>描述“算什么”，保留关系代数语义；本身不承诺 hash join、exchange 等执行算法。</td><td>输出 slots、nullability、DataTrait</td><td><code>LogicalJoin</code>、<code>LogicalAggregate</code></td></tr>
+                <tr><td><code>PhysicalPlan</code></td><td>描述“怎样执行”；可绑定 physical properties 与 statistics，最终可被 translator 消费。</td><td><code>PhysicalProperties</code>、<code>Statistics</code></td><td><code>PhysicalHashJoin</code>、<code>PhysicalQuickSort</code></td></tr>
+                <tr><td><code>Expression</code></td><td>独立的标量表达式树；递归类型检查，缓存 input slots / ExprIds、深度与宽度。</td><td>data type、nullable、children、ExprId/Slot</td><td><code>c_custkey = o_custkey</code>、<code>sum(...)</code></td></tr>
+                <tr><td><code>LogicalProperties</code></td><td>延迟计算 output、ExprIds、nullability 和 DataTrait；参与 Group 等价性检查。</td><td>output set、asterisk output、<code>DataTrait</code></td><td>join 输出列集合与 nullable 状态</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>语义平面真正落在哪里</h3>
+          <ul>
+            <li><code>Analyzer</code> 和 analysis/rewrite rules 负责 relation、slot、function、type、nullability 与各类语义检查。</li>
+            <li><code>LogicalProperties</code> 的相等性检查 output set 和对应 slot 的 nullability；<code>DataTrait</code> 承载 unique、uniform、equal set 与 functional dependencies。</li>
+            <li>join type、mark/apply/correlation、aggregate/window/CTE 的合法变换分散在具体 plan 与 rule 前置条件中；Memo 不会自动证明两个任意表达式等价。</li>
+          </ul>
+          <div class="callout red"><strong>边界：</strong>把两个 plan 塞进同一个 Group，就是向优化器声明它们逻辑等价。这个动作必须由经过语义约束的 transformation 完成；统计或学习模型只能帮助排序候选，不能替代等价性证明。</div>
+          <p><a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/Plan.java">Plan.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/AbstractPlan.java">AbstractPlan.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/logical/LogicalPlan.java">LogicalPlan.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/physical/PhysicalPlan.java">PhysicalPlan.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/expressions/Expression.java">Expression.java</a></p>
+        </section>
+
+        <section id="rules">
+          <p class="section-kicker">04 · Transform language</p>
+          <h2>Rule / RuleType：同一种外壳，三种核心用途</h2>
+          <p class="section-intro"><code>Rule</code> 把“匹配什么、满足什么条件、产生什么计划”封装起来；<code>RuleType</code> 同时是唯一编号和类别标签。规则真正在哪个阶段运行，由 rule class、RuleSet 和 Job executor 共同决定。</p>
+
+          <div class="grid-3">
+            <div class="card"><h3>Normalization / Rewrite</h3><p>在 plan tree 上把表达式收敛到规范形，通常用新树替代旧树，不保留所有历史形态。例如 filter pushdown、project merge、nullable 调整。</p></div>
+            <div class="card"><h3>Exploration</h3><p>从一个 logical GroupExpression 产生逻辑等价表达式，并 <code>copyIn(..., targetGroup, false)</code> 到同一等价类。Join commute/associate/exchange 属于这里。</p></div>
+            <div class="card"><h3>Implementation</h3><p>把 logical operator 变成一个或多个 physical operator，加入 Group 的 physical expressions，随后进入 property 与 cost 搜索。</p></div>
+          </div>
+
+          <h3>一条 Rule 从声明到执行</h3>
+          <pre><code>Pattern DSL + when/whenNot + then/thenApplyMulti
+  → Rule(ruleType, pattern, promise)
+  → OptimizeGroupExpressionJob 选择 exploration / implementation rules
+  → ApplyRuleJob 用 GroupExpressionMatching 枚举匹配
+  → rule.transform(matchedPlan, cascadesContext)
+  → Memo.copyIn(newPlan, ownerGroup, false)
+  → 新 logical expression：继续探索 + 派生统计
+  → 新 physical expression：CostAndEnforcerJob</code></pre>
+          <p><code>GroupExpression.ruleMasks</code> 记录已应用的 <code>RuleType</code>，配合 disabled-rule bitset 和 root pattern 检查，避免在同一个表达式上无意义地重复执行同一规则。Memo 还会做结构去重，因此“规则被调用”不等于“搜索空间一定变大”。</p>
+
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Q3 上的变化</th><th>类别</th><th>结果进入哪里</th><th>是否保留旧候选</th></tr></thead>
+              <tbody>
+                <tr><td>filter 下推到 customer/orders/lineitem scan 上方</td><td>Rewrite</td><td>新的 normalized plan tree</td><td>通常不保留旧树</td></tr>
+                <tr><td><code>(customer ⋈ orders) ⋈ lineitem</code> 与合法的交换/结合形态</td><td>Exploration</td><td>目标 Group 的 logical expressions</td><td>保留并共享子 Group</td></tr>
+                <tr><td><code>LogicalJoin → PhysicalHashJoin</code></td><td>Implementation</td><td>目标 Group 的 physical expressions</td><td>与其他物理候选比较</td></tr>
+                <tr><td><code>LogicalSort →</code> two-phase / one-phase quick sort</td><td>Implementation</td><td>两个 physical alternatives</td><td>保留，交给 property + cost</td></tr>
+                <tr><td>GATHER / hash partition 不满足时补 distribute</td><td>Enforcement，不是普通 implementation rule</td><td>Group 的 enforcers</td><td>作为代价化候选</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="callout warn"><strong>以当前源码为准：</strong>Doris Nereids 的 join implementation 是 <code>PhysicalHashJoin</code> 或 <code>PhysicalNestedLoopJoin</code>，两条规则通过 <code>JoinUtils.shouldNestedLoopJoin</code> 互斥选择；当前没有 <code>PhysicalMergeJoin</code>。计划中的 <code>MERGE_SORT</code> 是排序阶段，不是 merge join。</div>
+          <p>join reorder 也不是优化器中心：<code>RuleSet</code> 只是按配置选择 left-zig-zag、zig-zag 或 bushy 规则族；DPHyp 则通过 hypergraph enumeration 生成 join alternatives。它们最终都必须回到 Group、physical implementation、property 和 cost 这套统一对象上。</p>
+          <p><a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/Rule.java">Rule.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/RuleType.java">RuleType.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/RuleSet.java">RuleSet.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/ApplyRuleJob.java">ApplyRuleJob.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/implementation/LogicalJoinToHashJoin.java">LogicalJoinToHashJoin.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/implementation/LogicalSortToPhysicalQuickSort.java">LogicalSortToPhysicalQuickSort.java</a></p>
+        </section>
+
+        <section id="memo">
+          <p class="section-kicker">05 · Shared search space</p>
+          <h2>Memo / Group / GroupExpression：把树空间压成共享图</h2>
+          <p class="section-intro">Memo 的关键不是“缓存计划”，而是把 logical equivalence class 和 operator expression 分开：Group 表示“同一件事”，GroupExpression 表示“用哪个算子、依赖哪些子等价类来做”。</p>
+
+          <div class="diagram-scroll" aria-label="Memo Group GroupExpression 对象模型图">
+            <svg class="diagram" viewBox="0 0 1160 650" role="img" aria-labelledby="memo-title memo-desc">
+              <title id="memo-title">Memo、Group 与 GroupExpression 对象模型</title>
+              <desc id="memo-desc">Memo 持有 Group 和全局 GroupExpression 去重表。一个 Group 内有逻辑表达式、物理表达式、enforcer、统计和按物理属性索引的最低成本表。每个 GroupExpression 的孩子指向其他 Group。</desc>
+              <defs>
+                <marker id="memo-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path class="arrow-head" d="M0,0 L0,6 L9,3 z"/></marker>
+              </defs>
+
+              <rect class="memo-box" x="420" y="26" width="320" height="82" rx="15"/>
+              <text class="label" x="580" y="57">Memo</text>
+              <text class="sub" x="580" y="80">groups + canonical GroupExpression map + root</text>
+
+              <rect class="equiv" x="55" y="170" width="300" height="330" rx="16"/>
+              <text class="label" x="205" y="203">Group C · {customer}</text>
+              <rect class="memo-box" x="85" y="230" width="240" height="75" rx="11"/>
+              <text class="label" x="205" y="258">LogicalOlapScan</text>
+              <text class="sub" x="205" y="282">logical expression · children=[]</text>
+              <rect class="memo-box" x="85" y="325" width="240" height="75" rx="11"/>
+              <text class="label" x="205" y="353">PhysicalOlapScan</text>
+              <text class="sub" x="205" y="377">physical expression · children=[]</text>
+              <text class="micro" x="205" y="439">LogicalProperties · Statistics</text>
+              <text class="micro" x="205" y="461">lowestCostPlans[PhysicalProperties]</text>
+
+              <rect class="equiv" x="430" y="170" width="300" height="415" rx="16"/>
+              <text class="label" x="580" y="203">Group CO · {customer ⋈ orders}</text>
+              <rect class="memo-box" x="460" y="230" width="240" height="78" rx="11"/>
+              <text class="label" x="580" y="258">LogicalJoin</text>
+              <text class="sub" x="580" y="282">children=[Group C, Group O]</text>
+              <rect class="memo-box" x="460" y="326" width="240" height="78" rx="11"/>
+              <text class="label" x="580" y="354">LogicalJoin (commuted)</text>
+              <text class="sub" x="580" y="378">children=[Group O, Group C]</text>
+              <rect class="job-box" x="460" y="422" width="240" height="78" rx="11"/>
+              <text class="label" x="580" y="450">PhysicalHashJoin</text>
+              <text class="sub" x="580" y="474">same owner Group · child Groups</text>
+              <text class="micro" x="580" y="536">enforcers + Best(CO, P) table</text>
+              <text class="micro" x="580" y="558">P ∈ ANY / GATHER / HASH / ...</text>
+
+              <rect class="equiv" x="805" y="170" width="300" height="330" rx="16"/>
+              <text class="label" x="955" y="203">Group O · {orders}</text>
+              <rect class="memo-box" x="835" y="230" width="240" height="75" rx="11"/>
+              <text class="label" x="955" y="258">LogicalOlapScan</text>
+              <text class="sub" x="955" y="282">logical expression · children=[]</text>
+              <rect class="memo-box" x="835" y="325" width="240" height="75" rx="11"/>
+              <text class="label" x="955" y="353">PhysicalOlapScan</text>
+              <text class="sub" x="955" y="377">physical expression · children=[]</text>
+              <text class="micro" x="955" y="439">同一子 Group 被多棵 join tree 共享</text>
+
+              <path d="M500 230 C430 130 270 135 220 162" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#memo-arrow)"/>
+              <path d="M660 230 C745 130 900 135 940 162" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#memo-arrow)"/>
+              <path d="M580 108 V160" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#memo-arrow)"/>
+              <text class="micro" x="360" y="137">child Group ref</text>
+              <text class="micro" x="800" y="137">child Group ref</text>
+
+              <rect class="enforcer-box" x="65" y="535" width="300" height="73" rx="12"/>
+              <text class="label" x="215" y="563">全局去重键</text>
+              <text class="sub" x="215" y="588">plan operator/value + ordered child Groups</text>
+              <path d="M365 571 H420" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#memo-arrow)"/>
+
+              <rect class="runtime" x="795" y="535" width="300" height="73" rx="12"/>
+              <text class="label" x="945" y="563">共享而非展开</text>
+              <text class="sub" x="945" y="588">copy-out 时才递归选择并重建一棵树</text>
+              <path d="M730 571 H785" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#memo-arrow)"/>
+            </svg>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>对象</th><th>“拥有”什么</th><th>关键不变量 / 索引</th><th>搜索中的作用</th></tr></thead>
+              <tbody>
+                <tr><td><code>Memo</code></td><td>所有 Groups、root、全局 canonical GroupExpression map</td><td>结构相同的 GroupExpression 全局唯一；必要时 merge Group</td><td>初始化、copyIn/rewrite、去重、copyOut / rank</td></tr>
+                <tr><td><code>Group</code></td><td>logical/physical expressions、enforcers、LogicalProperties、Statistics</td><td>表达式逻辑等价；<code>lowestCostPlans</code> 以 required <code>PhysicalProperties</code> 为键</td><td>回答 <code>Best(G, P)</code></td></tr>
+                <tr><td><code>GroupExpression</code></td><td>Plan operator、owner Group、ordered child Groups、rule mask、cost/property tables</td><td><code>equals/hashCode = plan + child Groups</code></td><td>规则匹配和计价的最小单位</td></tr>
+                <tr><td><code>GroupPlan</code></td><td>一个 Group 的 plan placeholder</td><td>只做树 API 与 Memo 图之间的桥</td><td>让 Rule 看到可组合的 Plan 形态，而不展开所有子树</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>一棵 normalized tree 怎样进入 Memo</h3>
+          <ol class="steps">
+            <li><code>Memo.init(plan)</code> 递归处理 children，因此叶子 Group 先创建。</li>
+            <li>父 plan 的具体 children 被 <code>GroupPlan</code> 替换，同时构造持有 <code>List&lt;Group&gt;</code> 的 GroupExpression。</li>
+            <li>用该 GroupExpression 创建新的 Group，登记 logical properties，并放入 <code>groups</code>。</li>
+            <li>GroupExpression 同时放入全局 canonical map；后续 <code>copyIn</code> 先查重，再决定加入目标 Group、创建新 Group 或 merge Groups。</li>
+          </ol>
+          <div class="callout"><strong>压缩来自哪里：</strong>假设 customer 子计划可用 3 种方式、orders 可用 4 种方式，父 join 不保存 12 棵展开后的树；它保存“join operator + 两个 child Group”，子 Group 各自维护最优表，copy-out 时才按 required property 组合出最终树。</div>
+          <p><a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/memo/Memo.java">Memo.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/memo/Group.java">Group.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/memo/GroupExpression.java">GroupExpression.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/GroupPlan.java">GroupPlan.java</a></p>
+        </section>
+
+        <section id="context">
+          <p class="section-kicker">06 · Per-statement workspace</p>
+          <h2>CascadesContext：把树模式、Memo 模式和调度状态接起来</h2>
+          <p class="section-intro"><code>CascadesContext</code> 不是一个全局 optimizer singleton，也不只是 Memo 的包装。它是一次 statement optimization 的工作区，并能为 CTE、subquery 或临时 rewrite 派生子 context。</p>
+
+          <div class="grid-2">
+            <div class="card"><h3>Analyze / Rewrite 阶段</h3><p>主要状态在 <code>plan</code> 字段，通过 <code>getRewritePlan()</code> / <code>setRewritePlan()</code> 读写一棵树。Analyzer、Rewriter 和 plan-process 记录围绕它工作。</p></div>
+            <div class="card"><h3>Optimize 阶段</h3><p><code>toMemo()</code> 以当前 plan 构造 <code>Memo</code>；RuleSet、JobStack、SimpleJobScheduler 和 current JobContext 驱动搜索。完成翻译后可 <code>releaseMemo()</code>。</p></div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Context</th><th>生命周期</th><th>持有的核心信息</th><th>不要混淆为</th></tr></thead>
+              <tbody>
+                <tr><td><code>StatementContext</code></td><td>一次 statement</td><td>ConnectContext、ID generators、session 派生状态、CTE/MV/DPHyp 标志、stopwatch</td><td>Memo 搜索器</td></tr>
+                <tr><td><code>CascadesContext</code></td><td>一次优化工作区，可有 parent/subtree context</td><td>plan 或 memo、RuleSet、JobPool/Scheduler、JobContext、CTE/runtime-filter/trace 状态</td><td>仅仅“MemoContext”</td></tr>
+                <tr><td><code>JobContext</code></td><td>一条 Job 搜索链</td><td><code>ScheduleContext</code> 与当前 required <code>PhysicalProperties</code>，以及 rewrite/trace 状态</td><td>线程或执行 task</td></tr>
+                <tr><td><code>PlanTranslatorContext</code></td><td>最优物理树选出之后</td><td>PlanNode IDs、fragments、scan nodes、descriptor table、Nereids-to-legacy 映射</td><td>Cascades search context</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <pre><code>CascadesContext.initContext(statementContext, parsedPlan, GATHER)
+  ├─ plan = parsed/analyzed/rewritten tree
+  ├─ ruleSet = new RuleSet()
+  ├─ jobPool = new JobStack()
+  ├─ jobScheduler = new SimpleJobScheduler()
+  └─ currentJobContext.requiredProperties = GATHER
+
+rewrite complete
+  → toMemo(): memo = new Memo(connectContext, plan)
+  → pushJob(...)
+  → scheduler.executeJobPool(...)
+  → choose best physical tree
+  → translator / fragments
+  → releaseMemo()</code></pre>
+          <p><a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/CascadesContext.java">CascadesContext.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/StatementContext.java">StatementContext.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/JobContext.java">JobContext.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/glue/translator/PlanTranslatorContext.java">PlanTranslatorContext.java</a></p>
+        </section>
+
+        <section id="jobs">
+          <p class="section-kicker">07 · Scheduling</p>
+          <h2>Job 调度：显式栈上的深度优先 continuation</h2>
+          <p class="section-intro">当前 Nereids 优化器没有一个单独名为 <code>Task</code> 的调度抽象；调度单位是 <code>Job</code>。<code>SimpleJobScheduler</code> 单线程串行地从 <code>JobStack</code> pop，因此这是 LIFO 深度优先执行，不是 worker pool。</p>
+
+          <div class="diagram-scroll" aria-label="Cascades Job LIFO 调度图">
+            <svg class="diagram" viewBox="0 0 1160 560" role="img" aria-labelledby="jobs-title jobs-desc">
+              <title id="jobs-title">Cascades Job 的 LIFO 调度与 continuation</title>
+              <desc id="jobs-desc">OptimizeGroupJob 推入表达式优化和已有物理表达式计价任务。OptimizeGroupExpressionJob 推入规则任务。物理规则生成物理表达式后进入 CostAndEnforcerJob。若子 Group 尚未按所需属性优化，父计价 Job 的副本先入栈，再入栈子 OptimizeGroupJob，因此子任务先执行，父任务之后恢复。</desc>
+              <defs>
+                <marker id="jobs-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path class="arrow-head" d="M0,0 L0,6 L9,3 z"/></marker>
+                <marker id="jobs-arrow-soft" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path class="arrow-head-soft" d="M0,0 L0,6 L9,3 z"/></marker>
+              </defs>
+
+              <rect class="job-box" x="35" y="55" width="205" height="82" rx="13"/>
+              <text class="label" x="137" y="84">OptimizeGroupJob</text>
+              <text class="sub" x="137" y="108">Best(G, required P)?</text>
+              <text class="micro" x="137" y="127">explore group + price physical exprs</text>
+
+              <rect class="job-box" x="285" y="55" width="240" height="82" rx="13"/>
+              <text class="label" x="405" y="84">OptimizeGroupExpressionJob</text>
+              <text class="sub" x="405" y="108">select exploration + implementation</text>
+              <text class="micro" x="405" y="127">push ApplyRuleJobs</text>
+
+              <rect class="memo-box" x="570" y="25" width="225" height="82" rx="13"/>
+              <text class="label" x="682" y="54">ApplyRuleJob</text>
+              <text class="sub" x="682" y="78">exploration result</text>
+              <text class="micro" x="682" y="97">new logical GroupExpression</text>
+
+              <rect class="job-box" x="570" y="126" width="225" height="82" rx="13"/>
+              <text class="label" x="682" y="155">ApplyRuleJob</text>
+              <text class="sub" x="682" y="179">implementation result</text>
+              <text class="micro" x="682" y="198">new physical GroupExpression</text>
+
+              <rect class="enforcer-box" x="840" y="126" width="270" height="82" rx="13"/>
+              <text class="label" x="975" y="155">CostAndEnforcerJob</text>
+              <text class="sub" x="975" y="179">child request tuples + cost + enforce</text>
+              <text class="micro" x="975" y="198">record Best(G, P)</text>
+
+              <path d="M240 96 H277" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#jobs-arrow)"/>
+              <path d="M525 81 H562" fill="none" stroke="#8797a6" stroke-width="1.7" stroke-dasharray="6 5" marker-end="url(#jobs-arrow-soft)"/>
+              <path d="M525 111 C545 112 545 167 562 167" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#jobs-arrow)"/>
+              <path d="M795 167 H832" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#jobs-arrow)"/>
+
+              <rect class="physical" x="75" y="282" width="1010" height="215" rx="17"/>
+              <text class="label-left" x="100" y="315">CostAndEnforcerJob 的 continuation</text>
+              <rect class="job-box" x="105" y="345" width="250" height="95" rx="13"/>
+              <text class="label" x="230" y="376">父 Cost Job</text>
+              <text class="sub" x="230" y="400">childGroup 没有 Best(child, Pc)</text>
+              <text class="micro" x="230" y="423">暂停当前组合</text>
+              <rect class="memo-box" x="455" y="345" width="250" height="95" rx="13"/>
+              <text class="label" x="580" y="376">push parent.clone()</text>
+              <text class="sub" x="580" y="400">保存 curChildIndex / property tuple</text>
+              <text class="micro" x="580" y="423">continuation 先入栈</text>
+              <rect class="job-box" x="805" y="345" width="250" height="95" rx="13"/>
+              <text class="label" x="930" y="376">push child OptimizeGroup</text>
+              <text class="sub" x="930" y="400">required = Pc</text>
+              <text class="micro" x="930" y="423">后入栈 → 先执行</text>
+              <path d="M355 392 H447" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#jobs-arrow)"/>
+              <path d="M705 392 H797" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#jobs-arrow)"/>
+              <path d="M930 440 C930 480 580 480 580 448" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#jobs-arrow)"/>
+              <text class="micro" x="755" y="479">child 完成后，父 clone 出栈并从断点继续</text>
+            </svg>
+          </div>
+
+          <h3>CBO 主链中每个 Job 只做一件事</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Job</th><th>输入</th><th>主要动作</th><th>可能 push 的后续 Job</th></tr></thead>
+              <tbody>
+                <tr><td><code>OptimizeGroupJob</code></td><td>Group + required P</td><td>若已有 best 直接返回；否则探索 logical expressions，并计价已有 physical expressions</td><td><code>OptimizeGroupExpressionJob</code>、<code>CostAndEnforcerJob</code></td></tr>
+                <tr><td><code>OptimizeGroupExpressionJob</code></td><td>logical GroupExpression</td><td>按 DPHyp/after-DPHyp/zig-zag/bushy 等状态选择规则</td><td>多个 <code>ApplyRuleJob</code></td></tr>
+                <tr><td><code>ApplyRuleJob</code></td><td>GroupExpression + Rule</td><td>pattern match、transform、copyIn、标记 rule applied</td><td>新 logical 的 explore/stats；新 physical 的 cost/stats</td></tr>
+                <tr><td><code>DeriveStatsJob</code></td><td>GroupExpression</td><td>先调度 children，再用 <code>StatsCalculator</code> 或 <code>HboStatsCalculator</code> 估计当前表达式</td><td>自己的 continuation + child stats jobs</td></tr>
+                <tr><td><code>CostAndEnforcerJob</code></td><td>physical GroupExpression + parent required P</td><td>枚举 child-property tuples，递归找 child best，派生 output P，计价并补 enforcer</td><td>自己的 continuation + child <code>OptimizeGroupJob</code></td></tr>
+                <tr><td><code>JoinOrderJob</code></td><td>含 join 的 Group</td><td>构建 hypergraph，DPHyp 枚举并用 PlanReceiver 接收 subset plans</td><td>stats / physical implementation 相关 jobs</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <details><summary>为什么显式栈在 Group merge 和新 property 请求下仍能工作</summary><div>
+            <ul>
+              <li><code>GroupExpression.ruleMasks</code> 防止同一 RuleType 在同一表达式上重复应用；Memo 的 canonical map 再过滤结构重复结果。</li>
+              <li><code>Group.isExplored</code> 是 property-independent：新 required property 不会重跑全部 logical exploration，但仍会重新计价该 Group 已有 physical expressions。</li>
+              <li><code>Group.lowestCostPlans</code> 才是 property-aware cache；只有 exact required property 已有 best 时 <code>OptimizeGroupJob</code> 才直接返回。</li>
+              <li>Group merge 后，栈中可能还有指向旧 GroupExpression 的 Job；<code>isUnused</code> 让这些陈旧 Job 安全退出。</li>
+              <li><code>statDerived</code> 避免统计重复派生；scheduler 在每次 pop 前检查规划超时。</li>
+            </ul>
+          </div></details>
+
+          <div class="callout warn"><strong>LIFO 的一个反直觉细节：</strong><code>OptimizeGroupExpressionJob</code> 源码先 push exploration rules，后 push implementation rules，因此栈顶的 implementation jobs 会先执行。源码中的“push 顺序”不能直接当成“执行顺序”。</div>
+          <p>RBO 还存在一个外层 <code>RewriteJob</code> 接口；具体 plan-tree rewrite 会使用继承 <code>Job</code> 的内部任务。学习时可把它和上述 Memo CBO jobs 分开：前者围绕一棵树做 traversal/fixpoint，后者围绕 Group × Property 做组合搜索。</p>
+          <p><a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/Job.java">Job.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/scheduler/JobStack.java">JobStack.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/scheduler/SimpleJobScheduler.java">SimpleJobScheduler.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/OptimizeGroupJob.java">OptimizeGroupJob.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/OptimizeGroupExpressionJob.java">OptimizeGroupExpressionJob.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/CostAndEnforcerJob.java">CostAndEnforcerJob.java</a></p>
+        </section>
+
+        <section id="properties">
+          <p class="section-kicker">08 · Group × required property</p>
+          <h2>物理属性、成本与 Enforcer：分布式搜索真正耦合的地方</h2>
+          <p class="section-intro"><code>PhysicalProperties</code> 由 <code>DistributionSpec + OrderSpec</code> 组成。父节点的 required property 不是 Group 的固定字段，而是一次搜索请求；同一 Group 会按不同 property 保存不同 best plan。</p>
+
+          <pre><code>Best(G, ANY)
+Best(G, GATHER)
+Best(G, REPLICATED)
+Best(G, HASH(keys, shuffleType))
+Best(G, distribution + ORDER BY keys)</code></pre>
+          <div class="callout"><strong>术语校正：</strong>“每个 Group 的 required property”应更精确地写成“优化器曾对该 Group 发起的每个 required-property 请求”。<code>Group.lowestCostPlans</code> 的 key 集合就是已经求解的请求，而不是 Group 只有一个 property。</div>
+
+          <h3>一次 physical expression 怎样被完整计价</h3>
+          <ol class="steps">
+            <li><code>RequestPropertyDeriver</code> 根据当前 physical operator 和父 required property，生成零个或多个“对子节点的属性要求元组”。</li>
+            <li>对元组中的每个 child，递归求 <code>Best(childGroup, requestedChildProperty)</code>；若尚未求出，用 continuation 暂停父 job。</li>
+            <li><code>ChildrenPropertiesRegulator</code> 校正可行的孩子输出组合，<code>ChildOutputPropertyDeriver</code> 再推导当前算子的 output property。</li>
+            <li><code>CostCalculator</code> 计算节点 cost 并累加 child costs；记录 GroupExpression 的 lowest-cost table 和 Group 的 <code>Best(G, P)</code>。</li>
+            <li>若 output 不满足父 required，<code>EnforceMissingPropertiesHelper</code> 添加 sort/distribution enforcer，重新计价并参与同一 best-plan 比较。</li>
+          </ol>
+
+          <div class="grid-2">
+            <div class="card">
+              <h3>Hash Join 的 child-property space</h3>
+              <pre><code>candidate A: [ANY, REPLICATED]
+             probe  broadcast build
+
+candidate B: [HASH(leftKeys), HASH(rightKeys)]
+             shuffle / bucket-compatible join</code></pre>
+              <p>是否产生 broadcast / shuffle 组合还受 join type、hint、统计和 <code>JoinUtils</code> 检查影响。distribution 不是 join rule 先写死的。</p>
+            </div>
+            <div class="card">
+              <h3>Sort 的 property space</h3>
+              <pre><code>two phase:
+  LOCAL_SORT(child requires ANY)
+  → GATHER distribute
+  → MERGE_SORT
+
+one phase:
+  GATHER_SORT(child requires GATHER)</code></pre>
+              <p>普通 <code>LogicalSort</code> 由 <code>LogicalSortToPhysicalQuickSort</code> 产生两种实现；Q3 带 LIMIT，因此实际由对应的 <code>LogicalTopNToPhysicalTopN</code> 产生 <code>PhysicalTopN</code> 两阶段/单阶段候选，fixture 中 two-phase 方案胜出。</p>
+            </div>
+          </div>
+
+          <h3>Required、child request、derived output 与 enforcer 的关系</h3>
+          <div class="diagram-scroll" aria-label="物理属性搜索与 Enforcer 图">
+            <svg class="diagram" viewBox="0 0 1160 430" role="img" aria-labelledby="prop-title prop-desc">
+              <title id="prop-title">物理属性搜索与 Enforcer</title>
+              <desc id="prop-desc">父节点向当前 Group 请求物理属性。物理表达式把属性要求传递给孩子，孩子返回输出属性和最低成本。当前表达式派生自己的输出属性；若不能满足父要求，则加入 sort 或 distribute enforcer，再记录新的最低成本计划。</desc>
+              <defs>
+                <marker id="prop-arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path class="arrow-head" d="M0,0 L0,6 L9,3 z"/></marker>
+              </defs>
+              <rect class="physical" x="420" y="25" width="320" height="72" rx="13"/>
+              <text class="label" x="580" y="54">parent required P</text>
+              <text class="sub" x="580" y="78">JobContext.requiredProperties</text>
+
+              <rect class="job-box" x="420" y="135" width="320" height="92" rx="13"/>
+              <text class="label" x="580" y="164">physical GroupExpression</text>
+              <text class="sub" x="580" y="188">RequestPropertyDeriver</text>
+              <text class="micro" x="580" y="209">enumerate [Pchild0, Pchild1, ...]</text>
+
+              <rect class="memo-box" x="55" y="284" width="300" height="92" rx="13"/>
+              <text class="label" x="205" y="313">Best(child 0, Pc0)</text>
+              <text class="sub" x="205" y="337">output P0 + cost C0</text>
+              <text class="micro" x="205" y="358">recursive OptimizeGroupJob</text>
+              <rect class="memo-box" x="430" y="284" width="300" height="92" rx="13"/>
+              <text class="label" x="580" y="313">derive output + total cost</text>
+              <text class="sub" x="580" y="337">ChildOutputPropertyDeriver</text>
+              <text class="micro" x="580" y="358">Cnode + Σ Cchild</text>
+              <rect class="memo-box" x="805" y="284" width="300" height="92" rx="13"/>
+              <text class="label" x="955" y="313">Best(child 1, Pc1)</text>
+              <text class="sub" x="955" y="337">output P1 + cost C1</text>
+              <text class="micro" x="955" y="358">recursive OptimizeGroupJob</text>
+
+              <rect class="enforcer-box" x="790" y="135" width="315" height="92" rx="13"/>
+              <text class="label" x="947" y="164">output P ⊭ required P?</text>
+              <text class="sub" x="947" y="188">add PhysicalDistribute / QuickSort</text>
+              <text class="micro" x="947" y="209">cost enforcer → record Best(G, required P)</text>
+
+              <path d="M580 97 V127" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#prop-arrow)"/>
+              <path d="M485 227 C420 250 300 248 225 276" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#prop-arrow)"/>
+              <path d="M675 227 C750 250 875 248 935 276" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#prop-arrow)"/>
+              <path d="M355 330 H422" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#prop-arrow)"/>
+              <path d="M805 330 H738" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#prop-arrow)"/>
+              <path d="M730 304 C780 280 800 245 860 229" fill="none" stroke="var(--diagram-edge)" stroke-width="2" marker-end="url(#prop-arrow)"/>
+            </svg>
+          </div>
+
+          <h3>当前 Doris Enforcer 的实际边界</h3>
+          <ul>
+            <li>distribution 不满足：<code>DistributionSpec.addEnforcer()</code> 构造 <code>PhysicalDistribute&lt;GroupPlan&gt;</code>。</li>
+            <li>order 不满足：<code>OrderSpec</code> 构造 local 或 global <code>PhysicalQuickSort</code>。</li>
+            <li>order 与 distribution 同时不满足时，helper 按 GATHER、must-local-sort 等情况决定 sort/distribute 顺序，因为 redistribution 可能破坏已有顺序。</li>
+            <li>当前这条通用 enforcement 路径没有 generic spool/materialize enforcer；不能把其他 Cascades 系统的 enforcer 清单直接当作 Doris 现状。</li>
+          </ul>
+
+          <h3>统计与 cost 怎样接进来</h3>
+          <p><code>DeriveStatsJob</code> 自底向上为 GroupExpression 调用 <code>StatsCalculator</code>；启用 HBO 时改用 <code>HboStatsCalculator</code>。<code>Cost</code> 保存 CPU、memory、network 三个分量，并按 session cost weights 折算成一个 scalar value；<code>CostCalculator.addChildCost</code> 把节点和子树分量相加。</p>
+          <div class="callout warn"><strong>不要套用通用清单：</strong>当前 <code>Cost</code> 没有独立的 sequential/random I/O 字段，也没有单独的 spill 字段。相关影响只能体现在具体算子公式、统计量、系数或未来模型演进中。文档讲“估计平面”时应区分理想维度与当前代码。</div>
+          <p><a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/PhysicalProperties.java">PhysicalProperties.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/RequestPropertyDeriver.java">RequestPropertyDeriver.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/ChildOutputPropertyDeriver.java">ChildOutputPropertyDeriver.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/ChildrenPropertiesRegulator.java">ChildrenPropertiesRegulator.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/EnforceMissingPropertiesHelper.java">EnforceMissingPropertiesHelper.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/implementation/LogicalTopNToPhysicalTopN.java">LogicalTopNToPhysicalTopN.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/cost/Cost.java">Cost.java</a></p>
+        </section>
+
+        <section id="dphyp">
+          <p class="section-kicker">09 · Hypergraph join order</p>
+          <h2>DPHyp 产生的 join tree，究竟怎样进入 Cascades Memo</h2>
+          <p class="section-intro">当前实现不是“DPHyp 在 Memo 外吐出一棵树，再把它追加到同一个最终 Memo”。准确路径是：先在一个临时 Memo 中做 hypergraph 枚举和轻量物理计价，选出 logical join tree；随后丢弃该 Memo，用选中树重建最终 Memo，再做统一的 Cascades physical-property 搜索。</p>
+
+          <ol class="flow-strip" aria-label="DPHyp 两阶段 Memo 生命周期">
+            <li class="flow-node"><b>Rewrite tree</b><span>normalized LogicalPlan<br>join cluster ready</span></li><li class="arrow" aria-hidden="true">→</li>
+            <li class="flow-node"><b>Memo #1</b><span><code>toMemo()</code><br>derive root stats</span></li><li class="arrow" aria-hidden="true">→</li>
+            <li class="flow-node"><b>HyperGraph</b><span><code>JoinOrderJob</code><br>nodes + join edges</span></li><li class="arrow" aria-hidden="true">→</li>
+            <li class="flow-node"><b>CSG / CMP</b><span><code>SubgraphEnumerator</code><br>connected subset pairs</span></li><li class="arrow" aria-hidden="true">→</li>
+            <li class="flow-node"><b>PlanReceiver</b><span>bitmap → Group<br><code>memo.copyIn()</code></span></li><li class="arrow" aria-hidden="true">→</li>
+            <li class="flow-node"><b>Best logical</b><span>recompute stats/cost<br><code>copyOutBestLogicalPlan</code></span></li><li class="arrow" aria-hidden="true">→</li>
+            <li class="flow-node"><b>Memo #2</b><span>rewrite chosen tree<br><code>releaseMemo → toMemo</code></span></li><li class="arrow" aria-hidden="true">→</li>
+            <li class="flow-node"><b>Final CBO</b><span><code>OptimizeGroup(root,GATHER)</code><br>property + enforcer + cost</span></li>
+          </ol>
+
+          <h3>源码逐步展开</h3>
+          <ol class="steps">
+            <li><code>Optimizer.execute()</code> 先对 normalized plan 调用 <code>CascadesContext.toMemo()</code>，并对 root logical expressions 运行 <code>DeriveStatsJob</code>。这是 Memo #1。</li>
+            <li><code>Optimizer.isDpHyp()</code> 比较的是 <code>Memo.countMaxContinuousJoin(rewritePlan)</code> 得到的“最大连续 <code>LogicalJoin</code> 算子数”，不是表数。自动选择条件是 <code>continuousJoinNum &gt; maxTableCountUseCascadesJoinReorder</code>；默认阈值为 10，列统计未知时翻倍。普通连通的 N 表二叉 join 通常有 N−1 个 join 算子，因此已知统计下默认从 12 表起才可能自动选择 DPHyp。三表 Q3 需显式设置 <code>enable_dphyp_optimizer=true</code>。</li>
+            <li><code>JoinOrderJob</code> 找到可重排 join cluster，<code>HyperGraph.Builder</code> 将非 join 子树变成 nodes、join predicate 变成 edges；<code>SubgraphEnumerator</code> 按 CSG/CMP 枚举合法连接。</li>
+            <li><code>PlanReceiver</code> 的 DP table 是 <code>bitmap → Group</code>。每次 emit 用左右 subset Group 的 <code>GroupPlan</code> 构造 <code>LogicalJoin</code> / <code>LogicalProject</code>，为新 subset 建 Group，并调用 <code>Memo.copyIn()</code>。</li>
+            <li>新 join GroupExpression 立即通过 <code>OptimizeGroupExpressionJob(..., ANY)</code> 产生物理实现、child property 组合和 cost；因此 DPHyp 的 DP 决策已经借用了 Cascades 的 implementation/property/cost 基础设施，但此时求解目标是 <code>ANY</code>。</li>
+            <li>枚举结束后，<code>MemoStatsAndCostRecomputer.recompute(root, ANY, ...)</code> 重新估计临时 Memo 的 logical row count 与 physical costs，再由 <code>copyOutBestLogicalPlan()</code> 抽出最低成本 logical tree。</li>
+            <li>选中树在临时 CascadesContext 中运行 hash-condition pushdown、column pruning、project merge、nullable 调整与校验；主 context 随后 <code>releaseMemo()</code>，把这棵树设为 rewrite plan，并再次 <code>toMemo()</code>。这是 Memo #2。</li>
+            <li>最终统一执行 <code>OptimizeGroupJob(root, GATHER)</code>。after-DPHyp rule set、implementation rules、stats、required/derived properties、enforcers，以及针对已选 logical tree 的最终 property/cost search 在新 Memo 上完成。</li>
+          </ol>
+
+          <div class="callout red"><strong>最重要的观察结论：</strong><code>EXPLAIN MEMO PLAN</code> 展示的是重建后的最终 Memo，不是保留了全部 DPHyp subset/join-tree alternatives 的 Memo #1。若要研究 CSG/CMP 枚举，必须同时看 <code>enable_dphyp_trace</code> 日志或在 <code>PlanReceiver#emitCsgCmp</code> 下断点。</div>
+
+          <h3>把 Q3 的组合决策说完整，也画出当前实现的边界</h3>
+          <pre><code>Memo #1 · DPHyp subset search under ANY
+  legal join order + join-local implementations/properties/cost
+  (Hash or NLJ; broadcast/shuffle cost can affect subset winner)
+      ↓ copyOutBestLogicalPlan — one logical join tree crosses this boundary
+Memo #2 · final Cascades search under root GATHER
+  implementation rules → PhysicalHashJoin / PhysicalNestedLoopJoin
+  RequestPropertyDeriver → broadcast or hash-compatible shuffle/bucket/colocate
+  LogicalTopN / Sort → local + merge or gather alternatives
+  EnforceMissingPropertiesHelper → PhysicalDistribute / PhysicalQuickSort
+  Cost(cpu, memory, network) → Best(Group, required PhysicalProperties)</code></pre>
+          <p>因此“join order、join method、distribution、exchange placement 完全在一个搜索空间里联合择优”并不符合当前 DPHyp 路径。Memo #1 中，join-local 的实现、分布与 network cost 可以影响 subset winner；但一棵 logical join tree 被 copy-out、Memo #1 被释放后，Memo #2 的上层 TopN、root GATHER 或 sort cost 不能再让已经丢弃的 DPHyp join order 胜出。普通 Cascades exploration 在同一 Memo 内保留的 join alternatives，则可以继续参与该 Memo 的 property/cost 比较。</p>
+
+          <div class="grid-2">
+            <div class="card"><h3>显式启用 DPHyp</h3><pre><code>SET enable_dphyp_optimizer = true;
+SET enable_dphyp_trace = true;
+EXPLAIN MEMO PLAN &lt;Q3&gt;;</code></pre><p>该开关只满足 DPHyp 的选择分支，仍要求存在 join、允许 join reorder、没有禁用 reorder 的 leading hint，且 join 数不超过 <code>max_join_number_of_reorder</code>。Q3 在本文设置下满足这些 gate。</p></div>
+            <div class="card"><h3>对照普通 Cascades</h3><pre><code>SET enable_dphyp_optimizer = false;
+SET disable_join_reorder = false;
+EXPLAIN MEMO PLAN &lt;Q3&gt;;</code></pre><p>三表通常走 zig-zag/bushy exploration rules。两轮可比较最终 logical/physical shape；DPHyp 的枚举规模必须比较 CSG/CMP trace，不能用最终 Memo #2 的 GroupExpression 数量代替。</p></div>
+          </div>
+          <p><a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/executor/Optimizer.java">Optimizer.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/memo/Memo.java">Memo.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/qe/SessionVariable.java">SessionVariable.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/joinorder/JoinOrderJob.java">JoinOrderJob.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/joinorder/hypergraphv2/SubgraphEnumerator.java">hypergraphv2/SubgraphEnumerator.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/joinorder/hypergraphv2/receiver/PlanReceiver.java">hypergraphv2/receiver/PlanReceiver.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/stats/MemoStatsAndCostRecomputer.java">MemoStatsAndCostRecomputer.java</a></p>
+        </section>
+
+        <section id="distributed">
+          <p class="section-kicker">10 · From optimizer to execution</p>
+          <h2>选出 PhysicalPlan 之后，怎样变成分布式执行计划</h2>
+          <p class="section-intro">Cascades 搜索结束时仍是一棵 Nereids <code>PhysicalPlan</code>。执行系统需要 PlanNode、ExchangeNode、PlanFragment、worker 和 instance；这些转换发生在 Memo 之外，但 Exchange 的位置和类型已经受到 CBO property search 的约束。</p>
+
+          <ol class="flow-strip" aria-label="PhysicalPlan 到 DistributedPlan">
+            <li class="flow-node"><b>Best(root, GATHER)</b><span><code>chooseBestPlan</code><br>沿 child properties copy-out</span></li><li class="arrow" aria-hidden="true">→</li>
+            <li class="flow-node"><b>Physical tree</b><span>chosen expression + enforcers<br>attached stats/properties</span></li><li class="arrow" aria-hidden="true">→</li>
+            <li class="flow-node"><b>Post-process</b><span>runtime filter / TopN filter<br>late physical rewrites</span></li><li class="arrow" aria-hidden="true">→</li>
+            <li class="flow-node"><b>Translator</b><span><code>PhysicalPlanTranslator</code><br>Nereids → PlanNode</span></li><li class="arrow" aria-hidden="true">→</li>
+            <li class="flow-node"><b>Fragments</b><span><code>PhysicalDistribute</code><br>→ ExchangeNode + split</span></li><li class="arrow" aria-hidden="true">→</li>
+            <li class="flow-node"><b>Distribute</b><span><code>DistributePlanner</code><br>assign workers / DOP</span></li><li class="arrow" aria-hidden="true">→</li>
+            <li class="flow-node"><b>DistributedPlan</b><span>linked fragment instances<br>destinations + inputs</span></li>
+          </ol>
+
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>层次</th><th>源码对象</th><th>它决定什么</th><th>Q3 中的表现</th></tr></thead>
+              <tbody>
+                <tr><td>CBO property/enforcer</td><td><code>PhysicalDistribute</code>、<code>DistributionSpec*</code></td><td>哪里必须 gather/broadcast/repartition，以及代价</td><td>TopN merge 前 GATHER；customer build broadcast</td></tr>
+                <tr><td>Plan translation</td><td><code>PhysicalPlanTranslator</code></td><td>Nereids physical operator 到 executable PlanNode；fragment split</td><td>每个 PhysicalDistribute 翻译为 ExchangeNode</td></tr>
+                <tr><td>Instance planning</td><td><code>DistributePlanner</code></td><td>scan/fragment job 分配到哪些 BE、多少 instance、怎样连接</td><td>按环境中的 worker 与 parallelism 实例化</td></tr>
+                <tr><td>BE local scheduling</td><td>pipeline/local exchange 相关后续处理</td><td>单机内部并行与数据交换</td><td>不属于 Cascades Memo 搜索本身</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="callout"><strong>三个名字不要混：</strong><code>PhysicalDistribute</code> 是 Nereids CBO 中的 enforcer plan；<code>ExchangeNode</code> 是 translator 生成的执行计划节点；<code>DistributedPlan</code> 记录 fragment instances 和 worker links。它们位于连续链路的三个阶段，不是同一个对象的别名。</div>
+          <p><a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/NereidsPlanner.java">NereidsPlanner.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/physical/PhysicalDistribute.java">PhysicalDistribute.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/glue/translator/PhysicalPlanTranslator.java">PhysicalPlanTranslator.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/distribute/DistributePlanner.java">DistributePlanner.java</a></p>
+        </section>
+
+        <section id="lab">
+          <p class="section-kicker">11 · Hands-on workbook</p>
+          <h2>三表实验记录手册：把“看过 EXPLAIN”变成“解释了搜索”</h2>
+          <p class="section-intro">建议只使用 Q3 一条 SQL，分四轮采样：parsed/analyzed、rewrite process、Memo/search、distributed plan。每轮都回答一个限定问题，最后再把记录串起来。</p>
+
+          <div class="callout"><strong>实验前置：</strong>连接到待观察 FE 的 MySQL query port，使用 regression 已准备或自行加载的 TPCH 数据库；确认 <code>customer</code>、<code>orders</code>、<code>lineitem</code> 数据与统计在两轮对照中不变。实际执行时把下文 <code>&lt;tpch_db&gt;</code> 和 <code>&lt;Q3&gt;</code> 分别替换为数据库名与第 2 节的完整 SQL，不要把占位符原样粘贴给客户端。</div>
+
+          <h3>第一轮：固定实验输入</h3>
+          <pre><code>USE &lt;tpch_db&gt;;
+
+SET enable_nereids_planner = true;
+SET enable_fallback_to_original_planner = false;
+SET disable_join_reorder = false;
+
+-- 为三表查询显式进入 DPHyp；对照轮再设为 false
+SET enable_dphyp_optimizer = true;
+
+-- 可观测性
+SET dump_nereids_memo = true;
+SET enable_nereids_trace = true;
+SET enable_dphyp_trace = true;</code></pre>
+          <p><code>enable_nereids_trace</code> 会把 RewriteEvent、ApplyRuleEvent、PropertyAndCostPairs、EnforcerEvent 等写入 <code>$LOG_DIR/nereids_trace/&lt;queryId&gt;.json</code>；<code>enable_dphyp_trace</code> 会在 FE INFO log 输出 hypergraph Graphviz 和 CSG/CMP 枚举过程。目标语句的 queryId 可从 FE log/audit 信息确认；<code>SELECT last_query_id()</code> 也可在目标语句后立即查询上一条语句 ID。</p>
+          <div class="callout warn"><strong>Trace 隔离注意：</strong>当前 <code>NereidsTracer</code> 的事件数组是 static，<code>init()</code> 不会清空旧事件。最干净的做法是在新启动的测试 FE 上只对一条目标语句开启 trace；至少不要在同一个 FE 生命周期中连续跑多轮 traced EXPLAIN 后，把后一个 JSON 当成只属于后一条语句。DPHyp/Cascades 对照应分别采样并注明 trace 边界。</div>
+          <p><a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/minidump/NereidsTracer.java">NereidsTracer.java</a> <a class="source" href="../fe/fe-common/src/main/java/org/apache/doris/common/Config.java">Config.java</a></p>
+
+          <h3>第二轮：保存阶段快照</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>要记录的材料</th><th>命令 / 断点</th><th>必须回答的问题</th></tr></thead>
+              <tbody>
+                <tr><td>初始 logical tree</td><td><code>EXPLAIN PARSED PLAN &lt;Q3&gt;</code></td><td>哪些 relation、slot、function 仍未绑定？WHERE 中 join predicates 处于什么位置？</td></tr>
+                <tr><td>analyzed tree</td><td><code>EXPLAIN ANALYZED PLAN &lt;Q3&gt;</code></td><td>ExprId、type、nullable、qualified slot 何时确定？</td></tr>
+                <tr><td>normalization 后的最终 tree</td><td><code>EXPLAIN LOGICAL PLAN &lt;Q3&gt;</code></td><td>filter/project/join/aggregate 最终收敛成什么结构？它将怎样进入 Memo？</td></tr>
+                <tr><td>normalization 变化过程</td><td><code>EXPLAIN LOGICAL PLAN PROCESS &lt;Q3&gt;</code></td><td>每一行 process 由哪条 rule 产生？输入/输出怎样变化？这不是一棵单独的最终树。</td></tr>
+                <tr><td>最终 Memo groups 与表达式</td><td><code>EXPLAIN MEMO PLAN &lt;Q3&gt;</code> + <code>Memo#copyIn</code></td><td>Memo #2 中每个 Group 表示什么结果？哪些 logical/physical expressions 属于同一 Group？不要把它当成 DPHyp DP table。</td></tr>
+                <tr><td>DPHyp enumeration</td><td><code>PlanReceiver#emitCsgCmp</code>、FE trace</td><td>哪个 left/right bitmap 组成新 subset？predicate/edge 是否允许连接？哪个 Group 进入 DP table？</td></tr>
+                <tr><td>physical implementations</td><td><code>ApplyRuleJob#execute</code></td><td>每个 logical operator 产生哪些 physical expressions？为什么 join 是 Hash 或 NLJ？</td></tr>
+                <tr><td>required / child / output properties</td><td><code>CostAndEnforcerJob#execute</code></td><td>parent 要什么？当前 operator 向每个 child 要什么？child 实际输出什么？</td></tr>
+                <tr><td>enforcer</td><td><code>EnforceMissingPropertiesHelper#enforceProperty</code></td><td>属性缺口是什么？为什么补 sort/distribute？补完后的 cost 增加多少？</td></tr>
+                <tr><td>最终 cost 与分布式形状</td><td>root Group 的 <code>Lowest Plan ... BEST</code> + <code>EXPLAIN DISTRIBUTED PLAN</code></td><td>root GATHER 下哪个 expression 胜出？PhysicalDistribute 翻译成哪些 Exchange/fragments？</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>第三轮：按 Group 填表，不要只截图整份 Memo</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Group / 语义</th><th>Logical expressions</th><th>Physical expressions</th><th>Required P</th><th>ChildrenRequires</th><th>Enforcer</th><th>Cost / chosen</th></tr></thead>
+              <tbody>
+                <tr><td>G? · customer</td><td>scan + pushed filter/project</td><td>PhysicalOlapScan / Filter / Project</td><td>ANY / REPLICATED / ...</td><td>leaf</td><td>按实际记录</td><td>逐 property 记录</td></tr>
+                <tr><td>G? · orders</td><td>scan + date filter/project</td><td>对应 physical nodes</td><td>ANY / HASH(o_custkey) / ...</td><td>按 operator 记录</td><td>按实际记录</td><td>逐 property 记录</td></tr>
+                <tr><td>G? · customer ⋈ orders</td><td>原 join / commute / DPHyp chosen form</td><td>PhysicalHashJoin 或 NLJ</td><td>ANY / HASH / ...</td><td>[ANY, REPLICATED] 或 [HASH, HASH]</td><td>Broadcast/Shuffle 对应 distribute</td><td>比较 network + child cost</td></tr>
+                <tr><td>G? · all three tables</td><td>不同合法 join order</td><td>join physical expressions</td><td>上层 agg/sort 传入</td><td>记录每一组 child tuple</td><td>按实际记录</td><td>选出 join subtree best</td></tr>
+                <tr><td>ROOT · result/topN</td><td>normalized sink/topN</td><td>local/merge 或 gather sort</td><td>GATHER</td><td>ANY / GATHER + order</td><td>Gather + sort</td><td>root BEST scalar cost</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="tiny">Group ID 在不同版本、统计和开关下会变，不要在教学笔记中硬编码。先写 Group 的语义，再附本次实际 ID。普通 Cascades 与 DPHyp 两轮要分开填表：DPHyp 的临时 subset Groups 用 trace/断点记录，最终 <code>EXPLAIN MEMO PLAN</code> 表格只记录重建后的 Memo #2。</p>
+
+          <details open><summary><code>EXPLAIN MEMO PLAN</code> 中每段文字对应哪个字段</summary><div>
+            <ul>
+              <li><strong>Logical Expressions / Physical Expressions / Enforcers</strong>：<code>Group</code> 的三类表达式容器。</li>
+              <li><strong>Chosen Expression / Chosen Properties</strong>：最终 copy-out 选择状态。</li>
+              <li><strong>Statistics</strong>：Group-level row count 与列统计详情。</li>
+              <li><strong>Lowest Plan / Cost / Properties</strong>：<code>Group.lowestCostPlans</code> 的每个 property entry。</li>
+              <li><strong>ChildrenRequires</strong>：获胜 GroupExpression 在该 property 下记录的 child requested properties。</li>
+            </ul>
+          </div></details>
+
+          <h3>推荐断点顺序</h3>
+          <pre><code>1. CascadesContext#toMemo
+2. Memo#init / copyIn / insertGroupExpression
+3. Optimizer#execute / dpHypOptimize
+4. JoinOrderJob#optimizeJoin
+5. PlanReceiver#emitCsgCmp
+6. OptimizeGroupJob#execute
+7. OptimizeGroupExpressionJob#execute
+8. ApplyRuleJob#execute
+9. DeriveStatsJob#execute
+10. CostAndEnforcerJob#execute / calculateEnforce
+11. EnforceMissingPropertiesHelper#enforceProperty
+12. NereidsPlanner#chooseBestPlan
+13. PhysicalPlanTranslator#visitPhysicalDistribute
+14. DistributePlanner#plan</code></pre>
+
+          <h3>第四轮：用现成测试校验你的心智模型</h3>
+          <div class="grid-2">
+            <div class="card"><h3>最小 FE tests</h3><pre><code>./run-fe-ut.sh --run \
+  org.apache.doris.nereids.memo.MemoTest
+
+./run-fe-ut.sh --run \
+  org.apache.doris.nereids.sqltest.CascadesJoinReorderTest#testStartThreeJoin+testStartThreeJoinBushy
+
+./run-fe-ut.sh --run \
+  org.apache.doris.nereids.properties.RequestPropertyDeriverTest#testShuffleOrBroadcastHashJoin
+
+./run-fe-ut.sh --run \
+  org.apache.doris.nereids.sqltest.SortTest#testTwoPhaseSort</code></pre></div>
+            <div class="card"><h3>DPHyp 主链 FE tests</h3><pre><code>./run-fe-ut.sh --run \
+  org.apache.doris.nereids.sqltest.JoinOrderJobTest#testSimpleSQL
+
+./run-fe-ut.sh --run \
+  org.apache.doris.nereids.jobs.joinorder.hypergraphv2.SubgraphEnumeratorTest#testStarQuery</code></pre><p>前者覆盖 <code>JoinOrderJob</code> 的简单 SQL 路径，后者覆盖 hypergraphv2 star-query 枚举。当前没有一个以 Q3 断言完整 Memo #1 → Memo #2 生命周期的现成单测；该部分依赖本文的手工 trace/断点实验。</p></div>
+          </div>
+          <div class="grid-2">
+            <div class="card"><h3>权威 regression / shape</h3><pre><code>./run-regression-test.sh --run \
+  -d nereids_tpch_p0/tpch \
+  -s nereids_tpch_q3
+
+./run-regression-test.sh --run \
+  -d shape_check/tpch_sf1000/shape \
+  -s q3</code></pre><p><code>nereids_tpch_q3</code> 校验查询结果；shape suite 校验 <code>EXPLAIN SHAPE PLAN</code> 的优化后物理形状，并显式关闭 <code>enable_nereids_distribute_planner</code>。两者都未启用 DPHyp，因此不能证明 DPHyp 枚举过程或 DistributedPlan 的 worker/fragment instance 分配。</p></div>
+            <div class="card"><h3>验证边界</h3><p>这些 suite 需要相应 TPCH 数据集和 regression 环境。FE tests 验证局部对象和算法，Q3 regression 验证结果，shape fixture 验证稳定物理骨架，手工 trace/断点才负责本文的 DPHyp 两-Memo 观察。四类证据不能相互替代。</p></div>
+          </div>
+          <div class="callout"><strong>最小确定性例子：</strong><code>CascadesJoinReorderTest</code> 的三表 star join 明确断言 zig-zag 和 bushy exploration 都得到 8 个 plan。它适合先验证“规则怎样扩充 Memo”；Q3 result/shape 再验证结果与优化后物理骨架；DPHyp 和最终 worker 分配分别用 trace 与 <code>EXPLAIN DISTRIBUTED PLAN</code> 手工观察。</div>
+          <p><a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/memo/MemoTest.java">MemoTest.java</a> <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/sqltest/CascadesJoinReorderTest.java">CascadesJoinReorderTest.java</a> <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/sqltest/JoinOrderJobTest.java">JoinOrderJobTest.java</a> <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/jobs/joinorder/hypergraphv2/SubgraphEnumeratorTest.java">SubgraphEnumeratorTest.java</a> <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/properties/RequestPropertyDeriverTest.java">RequestPropertyDeriverTest.java</a> <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/sqltest/SortTest.java">SortTest.java</a> <a class="source" href="../run-fe-ut.sh">run-fe-ut.sh</a> <a class="source" href="../run-regression-test.sh">run-regression-test.sh</a></p>
+        </section>
+
+        <section id="misconceptions">
+          <p class="section-kicker">12 · Source-level corrections</p>
+          <h2>读 Cascades 源码最常见的十三个误区</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>误区</th><th>当前 Doris 源码中的准确说法</th></tr></thead>
+              <tbody>
+                <tr><td><code>Expression</code> 就是 <code>GroupExpression</code></td><td>前者是标量树；后者是 Memo 中“plan operator + child Groups”的关系表达式。</td></tr>
+                <tr><td>输出 Schema 一样就能进入同一 Group</td><td>Schema/nullability 只是必要检查；等价性必须由合法 transformation 保证，Memo 不做语义证明。</td></tr>
+                <tr><td>一个 Group 只有一个 logical expression</td><td>初始化时通常一个；exploration 后可以有多个。<code>getLogicalExpression()</code> 只适用于代码明确保证唯一的上下文。</td></tr>
+                <tr><td>一个 Group 有一个全局 best plan</td><td>best table 的 key 是 required <code>PhysicalProperties</code>；正确写法是 <code>Best(G, P)</code>。</td></tr>
+                <tr><td>required property 是 Group 固有属性</td><td>它随 <code>JobContext</code> 请求向下传播；Group 只是缓存已经求解的 property entries。</td></tr>
+                <tr><td>每个 join 都会同时比较 Hash / Merge / NLJ</td><td>Hash 与 NLJ implementation rule 由 <code>shouldNestedLoopJoin</code> 互斥；当前没有 Physical Merge Join。</td></tr>
+                <tr><td>Broadcast Join、Shuffle Join 是不同 physical join 节点</td><td>它们通常是同一个 <code>PhysicalHashJoin</code> 的不同 child-property 方案，必要时由 <code>PhysicalDistribute</code> 补齐。</td></tr>
+                <tr><td>所有 Rewrite 都在 JobStack 上按 LIFO 排队</td><td>Rewriter 外层按 batch list 执行；深树 traversal 才进入显式 JobStack。CBO jobs 则由 SimpleJobScheduler 串行 drain。</td></tr>
+                <tr><td><code>RulePromise</code> 决定当前实际执行顺序</td><td>虽然枚举描述 promise priority，当前 SimpleJobScheduler / OptimizeGroupExpressionJob 不按 promise 排序；实际顺序由 rule list 的 push 顺序和 LIFO 决定。</td></tr>
+                <tr><td>DPHyp alternatives 都保留在最终 Memo</td><td>当前实现从 Memo #1 copy-out 最佳 logical tree，rewrite 后释放并重建 Memo #2；最终 Memo 不保留完整 DP table。</td></tr>
+                <tr><td>DPHyp join order 与 root GATHER/TopN 完全联合搜索</td><td>Memo #1 在 ANY 下先选一棵 logical tree；Memo #2 才优化最终 GATHER、TopN 和 enforcer。后者不能重新选回已被 Memo #1 丢弃的 join order。</td></tr>
+                <tr><td><code>PhysicalDistribute</code> 就是运行时 Exchange instance</td><td>它是 CBO enforcer；translator 再生成 ExchangeNode / fragments；DistributePlanner 最后分配 worker instances。</td></tr>
+                <tr><td>cost 就是预估执行时间</td><td>当前是 CPU/memory/network 分量的加权比较标尺，用于候选排序；不是毫秒预测，也没有独立 I/O/spill 分量。</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="index">
+          <p class="section-kicker">Source index</p>
+          <h2>按学习问题组织的源码与测试索引</h2>
+          <p class="section-intro">先沿主链读接口和数据结构，再挑一个 rule 与一个 operator 深挖。不要从数百条 RuleType 枚举顺序开始。</p>
+          <div class="grid-2">
+            <details open><summary>入口、IR 与语义属性</summary><div>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/NereidsPlanner.java">NereidsPlanner.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/CascadesContext.java">CascadesContext.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/Plan.java">Plan.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/logical/LogicalPlan.java">LogicalPlan.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/physical/PhysicalPlan.java">PhysicalPlan.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/expressions/Expression.java">Expression.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/LogicalProperties.java">LogicalProperties.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/DataTrait.java">DataTrait.java</a>
+            </div></details>
+            <details open><summary>Rule、Pattern 与 Memo</summary><div>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/Rule.java">Rule.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/RuleType.java">RuleType.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/RuleSet.java">RuleSet.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/pattern/GroupExpressionMatching.java">GroupExpressionMatching.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/memo/Memo.java">Memo.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/memo/Group.java">Group.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/memo/GroupExpression.java">GroupExpression.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/GroupPlan.java">GroupPlan.java</a>
+            </div></details>
+            <details open><summary>Job、Stats、Properties 与 Cost</summary><div>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/OptimizeGroupJob.java">OptimizeGroupJob.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/OptimizeGroupExpressionJob.java">OptimizeGroupExpressionJob.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/ApplyRuleJob.java">ApplyRuleJob.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/DeriveStatsJob.java">DeriveStatsJob.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/CostAndEnforcerJob.java">CostAndEnforcerJob.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/RequestPropertyDeriver.java">RequestPropertyDeriver.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/EnforceMissingPropertiesHelper.java">EnforceMissingPropertiesHelper.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/cost/CostModel.java">CostModel.java</a>
+            </div></details>
+            <details open><summary>DPHyp 与分布式翻译</summary><div>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/executor/Optimizer.java">Optimizer.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/joinorder/JoinOrderJob.java">JoinOrderJob.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/joinorder/hypergraphv2/HyperGraph.java">hypergraphv2/HyperGraph.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/joinorder/hypergraphv2/SubgraphEnumerator.java">hypergraphv2/SubgraphEnumerator.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/joinorder/hypergraphv2/receiver/PlanReceiver.java">hypergraphv2/PlanReceiver.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/stats/MemoStatsAndCostRecomputer.java">MemoStatsAndCostRecomputer.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/glue/translator/PhysicalPlanTranslator.java">PhysicalPlanTranslator.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/distribute/DistributePlanner.java">DistributePlanner.java</a>
+            </div></details>
+            <details open><summary>最有教学价值的现成测试</summary><div>
+              <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/memo/MemoTest.java">MemoTest.java</a>
+              <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/pattern/GroupExpressionMatchingTest.java">GroupExpressionMatchingTest.java</a>
+              <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/sqltest/CascadesJoinReorderTest.java">CascadesJoinReorderTest.java</a>
+              <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/sqltest/JoinOrderJobTest.java">JoinOrderJobTest.java</a>
+              <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/jobs/joinorder/hypergraphv2/SubgraphEnumeratorTest.java">SubgraphEnumeratorTest.java</a>
+              <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/properties/RequestPropertyDeriverTest.java">RequestPropertyDeriverTest.java</a>
+              <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/properties/ChildOutputPropertyDeriverTest.java">ChildOutputPropertyDeriverTest.java</a>
+              <a class="source" href="../fe/fe-core/src/test/java/org/apache/doris/nereids/sqltest/SortTest.java">SortTest.java</a>
+              <a class="source" href="../regression-test/suites/nereids_tpch_p0/tpch/q3.groovy">TPC-H Q3 regression</a>
+            </div></details>
+            <details open><summary>配套总览</summary><div>
+              <a class="source" href="nereids-optimizer-learning-guide.html">Nereids optimizer learning guide</a>
+              <p class="tiny">总览篇覆盖 parser、analyzer、RBO、stats、cost、HBO、translator 与测试；本篇只负责 Cascades Phase 1 的对象和搜索机制。</p>
+            </div></details>
+          </div>
+
+          <h3>Phase 1 自测</h3>
+          <ul class="checklist">
+            <li>不看文档，能画出 Plan tree、Expression tree 与 Memo DAG 的三种边。</li>
+            <li>能解释 Group 为什么是语义承诺，而不只是相同 output schema 的集合。</li>
+            <li>能从 LIFO push 顺序推断一个 rule、stats、child optimize、parent continuation 的实际执行次序。</li>
+            <li>能针对一个 Group 列出多个 required properties，并找到各自 best expression、child requests 和 enforcer。</li>
+            <li>能解释 DPHyp Memo #1 → best logical tree → Memo #2，而不会把两个 Memo 当成一个。</li>
+            <li>能沿 Q3 解释 Memo #1 中 join-local order/method/distribution cost 与 Memo #2 中 TopN/GATHER/enforcer cost 的联系和不可回溯边界。</li>
+            <li>能区分 PhysicalDistribute、ExchangeNode、PlanFragment 和 worker assignment。</li>
+          </ul>
+          <p class="tiny"><span class="fact">源码事实</span>均按当前工作区 HEAD 核对；“五平面”与示例 Group 名是教学抽象。源码行号会漂移，因此文中以稳定路径、类名和方法名为导航。</p>
+        </section>
+      </div>
+    </main>
+    <footer>Doris Nereids Cascades Framework Guide · source baseline <code>daf8eaa464cb</code> · self-contained HTML</footer>
+  </div>
+</body>
+</html>
