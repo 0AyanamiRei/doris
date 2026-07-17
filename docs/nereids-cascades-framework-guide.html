@@ -458,6 +458,7 @@
             <div class="card"><h3>调度层</h3><p>从 <code>OptimizeGroupJob</code> 追到 rule apply、stats、child optimization、cost 与 enforcer continuation。</p></div>
             <div class="card"><h3>分布式搜索层</h3><p>解释 DPHyp 的 join order 与 Hash/NLJ、Broadcast/Shuffle/Gather、Sort 如何跨 Memo #1 / #2 两阶段组合并产生最终 cost。</p></div>
           </div>
+          <div class="callout red"><strong>本文的类型作用域：</strong>未加限定的 <code>Plan</code> 和 <code>Expression</code> 专指 <code>org.apache.doris.nereids.trees</code> 下的 Nereids 类型；旧包中的 <code>org.apache.doris.planner.PlanNode</code> 和 <code>org.apache.doris.analysis.Expr</code> 会始终写全名或明确标成 translator 输出。<code>Expression</code>、<code>GroupExpression</code>、<code>Expr</code> 是三个不同的 Java 类型，不能因为英文里都有 expression 就混用。</div>
           <div class="callout warn"><strong>术语校正：</strong>本文保留“task scheduling”作为优化器教材里的泛称，但当前 Doris 源码没有一个对应的 <code>Task</code> 类型；实际调度单位是 <code>Job</code>。同样，当前实现注册了 <code>PhysicalHashJoin</code> 与 <code>PhysicalNestedLoopJoin</code>，没有 <code>PhysicalMergeJoin</code>。后文会始终按源码事实描述。</div>
         </section>
 
@@ -577,12 +578,10 @@ ORDER BY o.o_orderdate, o.o_orderkey, l.l_linenumber;</code></pre>
           <div class="grid-2">
             <div class="card"><h4>树的语义怎样稳定</h4><p><code>PARSED</code> → <code>ANALYZED</code> → <code>LOGICAL</code>。先看 relation/slot 如何绑定，再看 filter pushdown、column pruning 和 hash condition 归类。</p></div>
             <div class="card"><h4>规则怎样改树</h4><p><code>LOGICAL PLAN PROCESS</code> 是 rule-by-rule 的 before/after 事件，不是一棵最终树；用它回答“是哪条规则造成了变化”。</p></div>
-            <div class="card"><h4>候选怎样搜索</h4><p><code>MEMO</code> 展示 Group、logical/physical expressions、enforcers、statistics 和按 required property 保存的 lowest plans。</p></div>
+            <div class="card"><h4>候选怎样搜索</h4><p><code>MEMO</code> 展示 Group、logical/physical <code>GroupExpression</code> entries、enforcers、statistics 和按 required property 保存的 lowest plans；这里的 expression 不是标量 <code>Expression</code>。</p></div>
             <div class="card"><h4>赢家怎样执行</h4><p><code>SHAPE</code> 先看紧凑骨架，<code>PHYSICAL</code> 再看 stats/cost/property，<code>DISTRIBUTED</code> 最后看 fragments、exchanges、workers。</p></div>
           </div>
-          <pre><code>SET enable_nereids_planner = true;
-SET enable_fallback_to_original_planner = false;
-SET parallel_pipeline_task_num = 1; -- 仅让教学输出更短
+          <pre><code>SET parallel_pipeline_task_num = 1; -- 仅让教学输出更短
 
 EXPLAIN PARSED PLAN            &lt;QUERY&gt;;
 EXPLAIN ANALYZED PLAN          &lt;QUERY&gt;;
@@ -622,6 +621,7 @@ EXPLAIN DISTRIBUTED PLAN       &lt;QUERY&gt;;</code></pre>
                 <tr><td><code>@13</code></td><td>该 physical node 对应的 Memo Group ID</td><td>用它从 PhysicalPlan 回查 Memo；ID 只在本次优化中有意义。</td></tr>
                 <tr><td><code>stats=48,443.3</code></td><td>优化器估算的输出行数</td><td>它是 cost 输入，不是运行时实际行数。</td></tr>
                 <tr><td><code>DistributionSpec*</code></td><td>输出或要求的分布属性</td><td>重点找 GATHER、REPLICATED、HASH 以及是谁插入 PhysicalDistribute。</td></tr>
+                <tr><td><code>Logical Expressions</code> / <code>Physical Expressions</code></td><td>Memo 中的 logical/physical <code>GroupExpression</code> 条目</td><td>不要理解成谓词、函数等标量 <code>Expression</code>；条目内部才持有一个 Plan operator。</td></tr>
               </tbody>
             </table>
           </div>
@@ -702,6 +702,7 @@ INIT_JOIN_ORDER</code></pre></div>
 
           <details open><summary>5. MEMO PLAN：Group、候选、属性和 cost 怎样放在一起</summary><div>
             <p>Memo 不是树，不能从第一行一路缩进读到底。先选一个 Group 局部阅读，再追 children Group；最后看 ROOT Group。</p>
+            <div class="callout warn"><strong>先校正 expression 的含义：</strong>本输出的 <code>Logical Expressions</code>、<code>Physical Expressions</code> 和 <code>Expression ID</code> 都指 Memo 中的 <code>GroupExpression</code>。它不是 <code>org.apache.doris.nereids.trees.expressions.Expression</code>，后者只表示 <code>EqualTo</code>、<code>Slot</code>、<code>Literal</code> 等标量计算。</div>
             <pre><code>Group[@13]
   Logical Expressions:  LogicalSort ... children=[@12]
   Physical Expressions: MERGE_SORT / GATHER_SORT candidates
@@ -779,28 +780,55 @@ PhysicalQuickSort[MERGE_SORT]@13 (stats=48,443.3)
 
         <section id="ir">
           <p class="section-kicker">04 · Intermediate representation</p>
-          <h2>Plan 与 Expression：两棵互相引用、职责不同的树</h2>
+          <h2>Plan 与 Expression：两套独立的泛型树，不是同一个概念</h2>
+          <div class="callout red"><strong>源码结论：</strong><code>Plan extends TreeNode&lt;Plan&gt;</code>，<code>Expression extends AbstractTreeNode&lt;Expression&gt;</code>；后者间接实现 <code>TreeNode&lt;Expression&gt;</code>。二者共享 Nereids 的遍历协议，但 <code>Plan</code> 不是 <code>Expression</code>，<code>Expression</code> 也不是 <code>Plan</code>，更不存在“所有节点统一继承 Expression”的设计。</div>
           <div class="object-row" aria-label="Plan 节点与标量表达式关系">
-            <div class="object-box"><b>Plan tree</b><small>operator + child plans<br>Filter / Join / Aggregate / Sort</small></div>
-            <div class="object-arrow" aria-hidden="true">→</div>
+            <div class="object-box"><b>Nereids Plan tree</b><small><code>children(): List&lt;Plan&gt;</code><br>Filter / Join / Aggregate / Sort</small></div>
+            <div class="object-arrow" aria-hidden="true">持有</div>
             <div class="object-box"><b>Plan#getExpressions()</b><small>当前算子持有的谓词、投影、排序键、聚合函数</small></div>
-            <div class="object-arrow" aria-hidden="true">→</div>
-            <div class="object-box"><b>Expression tree</b><small>EqualTo / And / Slot / Literal / Function</small></div>
+            <div class="object-arrow" aria-hidden="true">返回</div>
+            <div class="object-box"><b>Nereids Expression tree</b><small><code>children(): List&lt;Expression&gt;</code><br>EqualTo / And / Slot / Literal / Function</small></div>
           </div>
-          <p><code>Plan</code> 和 <code>Expression</code> 都是树节点，但优化器不能把它们混成一种 IR。Plan 的边表示关系代数算子的输入；Expression 的边表示标量计算。一个 <code>LogicalFilter</code> 有一个 Plan child，同时持有一棵或多棵 predicate expression tree。</p>
+          <p>准确说法是：它们各自都能使用 <code>TreeNode</code> 的遍历/重写 API，但泛型 self type 把孩子限制在各自体系内。Plan tree 的边表示关系算子的输入；Expression tree 的边表示标量计算。<code>Plan#getExpressions()</code> 是“Plan 节点拥有标量表达式”的对象引用，不会把这些表达式变成 <code>Plan#children()</code>。例如 <code>LogicalFilter</code> 有一个 Plan child，同时持有 predicate expression tree。标量子查询是特殊交叉引用：<code>SubqueryExpr</code> 可持有一个 <code>LogicalPlan</code>，分析阶段再通过 Apply 等结构处理；这也没有改变两套泛型 children 的类型边界。</p>
 
           <div class="table-wrap">
             <table>
               <thead><tr><th>对象</th><th>源码责任</th><th>关键状态</th><th>在简化查询中的例子</th></tr></thead>
               <tbody>
-                <tr><td><code>Plan</code></td><td>所有逻辑/物理计划节点的统一接口；暴露 children、expressions、output、input slots、logical properties 和 memo 快速引用。</td><td><code>PlanType</code>、children、<code>Optional&lt;GroupExpression&gt;</code></td><td>Join、Filter、Project、Sort</td></tr>
+                <tr><td><code>Plan</code></td><td>Nereids 所有逻辑/物理关系计划节点的统一接口；暴露 Plan children、owned scalar expressions、output、logical properties 和 memo 快速引用。</td><td><code>PlanType</code>、<code>List&lt;Plan&gt;</code> children、<code>Optional&lt;GroupExpression&gt;</code></td><td>Join、Filter、Project、Sort</td></tr>
                 <tr><td><code>LogicalPlan</code></td><td>描述“算什么”，保留关系代数语义；本身不承诺 hash join、exchange 等执行算法。</td><td>输出 slots、nullability、DataTrait</td><td><code>LogicalJoin</code>、<code>LogicalSort</code></td></tr>
                 <tr><td><code>PhysicalPlan</code></td><td>描述“怎样执行”；可绑定 physical properties 与 statistics，最终可被 translator 消费。</td><td><code>PhysicalProperties</code>、<code>Statistics</code></td><td><code>PhysicalHashJoin</code>、<code>PhysicalQuickSort</code></td></tr>
-                <tr><td><code>Expression</code></td><td>独立的标量表达式树；递归类型检查，缓存 input slots / ExprIds、深度与宽度。</td><td>data type、nullable、children、ExprId/Slot</td><td><code>c_custkey = o_custkey</code>、<code>o_orderdate &lt; DATE ...</code></td></tr>
+                <tr><td><code>Expression</code></td><td>Nereids 独立的标量表达式树；递归类型检查，缓存 input slots / ExprIds、深度与宽度；不是 Plan 的父类。</td><td>data type、nullable、<code>List&lt;Expression&gt;</code> children、ExprId/Slot</td><td><code>c_custkey = o_custkey</code>、<code>o_orderdate &lt; DATE ...</code></td></tr>
                 <tr><td><code>LogicalProperties</code></td><td>延迟计算 output、ExprIds、nullability 和 DataTrait；参与 Group 等价性检查。</td><td>output set、asterisk output、<code>DataTrait</code></td><td>join 输出列集合与 nullable 状态</td></tr>
               </tbody>
             </table>
           </div>
+
+          <h3>六个相似名字，分别位于哪一层</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>简称 / Java 类型</th><th>所属体系</th><th>它的孩子或内部引用</th><th>是否进入 Cascades Memo</th></tr></thead>
+              <tbody>
+                <tr><td><code>nereids...plans.Plan</code></td><td>Nereids 关系计划 IR</td><td><code>List&lt;Plan&gt;</code>，并通过 <code>getExpressions()</code> 持有标量表达式</td><td>是；Plan operator 被包装进 GroupExpression</td></tr>
+                <tr><td><code>nereids...expressions.Expression</code></td><td>Nereids 标量 IR</td><td><code>List&lt;Expression&gt;</code></td><td>作为 Plan operator 的字段参与相等性、规则与 cost，但本身不是 GroupExpression</td></tr>
+                <tr><td><code>nereids.memo.GroupExpression</code></td><td>Cascades Memo</td><td>一个 <code>Plan</code>、owner Group、<code>List&lt;Group&gt;</code> children</td><td>它就是 Memo 中逻辑/物理候选的存储与计价单位；类声明不继承 Plan 或 Expression</td></tr>
+                <tr><td><code>nereids...plans.GroupPlan</code></td><td>Nereids/Memo 桥接 placeholder</td><td>引用一个 Group，并实现 Plan API</td><td>用于规则匹配时把 Memo DAG 临时呈现为 Plan 形态</td></tr>
+                <tr><td><code>planner.PlanNode</code></td><td>translator 之后的 FE 执行计划结构</td><td><code>org.apache.doris.common.TreeNode&lt;PlanNode&gt;</code></td><td>否；它是最优 Nereids PhysicalPlan 选出后的翻译结果</td></tr>
+                <tr><td><code>analysis.Expr</code></td><td>translator 之后复用的标量/序列化结构</td><td><code>org.apache.doris.common.TreeNode&lt;Expr&gt;</code></td><td>否；由 <code>ExpressionTranslator</code> 从 Nereids Expression 翻译得到</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>“新老优化器”在当前源码基线中的准确边界</h3>
+          <p>Doris 源码仍保留大量 legacy/original/stale planner 命名和数据结构，但不能仅凭包名判断当前 SQL 使用了旧优化器。本文基线 <code>daf8eaa464cb</code> 中，普通 query 的 <code>StmtExecutor</code> 直接构造 <code>NereidsPlanner</code>；<code>enable_nereids_planner</code> 与 <code>enable_fallback_to_original_planner</code> 字段都标成 <code>VariableAnnotation.REMOVED</code>。因此它们不再是选择两套查询优化器的实验开关，也不应作为“本次一定走 Nereids”的证据。</p>
+          <pre><code>NereidsParser
+  → Nereids LogicalPlan + Nereids Expression
+  → Cascades Memo&lt;Group, GroupExpression&gt;
+  → chosen Nereids PhysicalPlan
+  → PhysicalPlanTranslator / ExpressionTranslator
+  → PlanFragment + planner.PlanNode + analysis.Expr
+  → Thrift / BE execution</code></pre>
+          <div class="callout warn"><strong>最重要的判断：</strong>翻译阶段生成 <code>PlanNode</code>、<code>Expr</code> 或 <code>PlanFragment</code>，只是 Nereids 与既有 FE/BE 执行协议之间的兼容边界，不表示又调用了一次旧优化器。反过来，<code>NereidsPlanner extends org.apache.doris.planner.Planner</code> 也只是复用顶层 planner facade；不能因为父类位于 <code>planner</code> package 就把 NereidsPlanner 归入旧优化器。</div>
 
           <h3>语义平面真正落在哪里</h3>
           <ul>
@@ -809,7 +837,7 @@ PhysicalQuickSort[MERGE_SORT]@13 (stats=48,443.3)
             <li>join type、mark/apply/correlation、aggregate/window/CTE 的合法变换分散在具体 plan 与 rule 前置条件中；Memo 不会自动证明两个任意表达式等价。</li>
           </ul>
           <div class="callout red"><strong>边界：</strong>把两个 plan 塞进同一个 Group，就是向优化器声明它们逻辑等价。这个动作必须由经过语义约束的 transformation 完成；统计或学习模型只能帮助排序候选，不能替代等价性证明。</div>
-          <p><a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/Plan.java">Plan.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/AbstractPlan.java">AbstractPlan.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/logical/LogicalPlan.java">LogicalPlan.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/physical/PhysicalPlan.java">PhysicalPlan.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/expressions/Expression.java">Expression.java</a></p>
+          <p><a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/TreeNode.java">Nereids TreeNode.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/Plan.java">Nereids Plan.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/AbstractPlan.java">AbstractPlan.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/logical/LogicalPlan.java">LogicalPlan.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/physical/PhysicalPlan.java">PhysicalPlan.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/expressions/Expression.java">Nereids Expression.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/memo/GroupExpression.java">GroupExpression.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/glue/translator/PhysicalPlanTranslator.java">PhysicalPlanTranslator.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/glue/translator/ExpressionTranslator.java">ExpressionTranslator.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/planner/PlanNode.java">planner.PlanNode.java</a> <a class="source" href="../fe/fe-catalog/src/main/java/org/apache/doris/analysis/Expr.java">analysis.Expr.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/qe/StmtExecutor.java">StmtExecutor.java</a> <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/qe/SessionVariable.java">SessionVariable.java</a></p>
         </section>
 
         <section id="rules">
@@ -820,7 +848,7 @@ PhysicalQuickSort[MERGE_SORT]@13 (stats=48,443.3)
           <div class="grid-3">
             <div class="card"><h3>Normalization / Rewrite</h3><p>在 plan tree 上把表达式收敛到规范形，通常用新树替代旧树，不保留所有历史形态。例如 filter pushdown、project merge、nullable 调整。</p></div>
             <div class="card"><h3>Exploration</h3><p>从一个 logical GroupExpression 产生逻辑等价表达式，并 <code>copyIn(..., targetGroup, false)</code> 到同一等价类。Join commute/associate/exchange 属于这里。</p></div>
-            <div class="card"><h3>Implementation</h3><p>把 logical operator 变成一个或多个 physical operator，加入 Group 的 physical expressions，随后进入 property 与 cost 搜索。</p></div>
+            <div class="card"><h3>Implementation</h3><p>把 logical operator 变成一个或多个 physical operator，以 physical <code>GroupExpression</code> 条目加入 Group，随后进入 property 与 cost 搜索。</p></div>
           </div>
 
           <h3>一条 Rule 从声明到执行</h3>
@@ -830,8 +858,8 @@ PhysicalQuickSort[MERGE_SORT]@13 (stats=48,443.3)
   → ApplyRuleJob 用 GroupExpressionMatching 枚举匹配
   → rule.transform(matchedPlan, cascadesContext)
   → Memo.copyIn(newPlan, ownerGroup, false)
-  → 新 logical expression：继续探索 + 派生统计
-  → 新 physical expression：CostAndEnforcerJob</code></pre>
+  → 新 logical GroupExpression：继续探索 + 派生统计
+  → 新 physical GroupExpression：CostAndEnforcerJob</code></pre>
           <p><code>GroupExpression.ruleMasks</code> 记录已应用的 <code>RuleType</code>，配合 disabled-rule bitset 和 root pattern 检查，避免在同一个表达式上无意义地重复执行同一规则。Memo 还会做结构去重，因此“规则被调用”不等于“搜索空间一定变大”。</p>
 
           <div class="table-wrap">
@@ -839,8 +867,8 @@ PhysicalQuickSort[MERGE_SORT]@13 (stats=48,443.3)
               <thead><tr><th>简化查询上的变化</th><th>类别</th><th>结果进入哪里</th><th>是否保留旧候选</th></tr></thead>
               <tbody>
                 <tr><td>filter 下推到 customer/orders/lineitem scan 上方</td><td>Rewrite</td><td>新的 normalized plan tree</td><td>通常不保留旧树</td></tr>
-                <tr><td><code>(customer ⋈ orders) ⋈ lineitem</code> 与合法的交换/结合形态</td><td>Exploration</td><td>目标 Group 的 logical expressions</td><td>保留并共享子 Group</td></tr>
-                <tr><td><code>LogicalJoin → PhysicalHashJoin</code></td><td>Implementation</td><td>目标 Group 的 physical expressions</td><td>与其他物理候选比较</td></tr>
+                <tr><td><code>(customer ⋈ orders) ⋈ lineitem</code> 与合法的交换/结合形态</td><td>Exploration</td><td>目标 Group 的 logical GroupExpressions</td><td>保留并共享子 Group</td></tr>
+                <tr><td><code>LogicalJoin → PhysicalHashJoin</code></td><td>Implementation</td><td>目标 Group 的 physical GroupExpressions</td><td>与其他物理候选比较</td></tr>
                 <tr><td><code>LogicalSort →</code> two-phase / one-phase quick sort</td><td>Implementation</td><td>两个 physical alternatives</td><td>保留，交给 property + cost</td></tr>
                 <tr><td>GATHER / hash partition 不满足时补 distribute</td><td>Enforcement，不是普通 implementation rule</td><td>Group 的 enforcers</td><td>作为代价化候选</td></tr>
               </tbody>
@@ -855,7 +883,7 @@ PhysicalQuickSort[MERGE_SORT]@13 (stats=48,443.3)
         <section id="memo">
           <p class="section-kicker">06 · Shared search space</p>
           <h2>Memo / Group / GroupExpression：把树空间压成共享图</h2>
-          <p class="section-intro">Memo 的关键不是“缓存计划”，而是把 logical equivalence class 和 operator expression 分开：Group 表示“同一件事”，GroupExpression 表示“用哪个算子、依赖哪些子等价类来做”。</p>
+          <p class="section-intro">Memo 的关键不是“缓存计划”，而是把 logical equivalence class 和 operator expression 分开：Group 表示“同一件事”，GroupExpression 表示“用哪个算子、依赖哪些子等价类来做”。本节的 logical/physical expression 均是 <code>GroupExpression</code> 的简称，不是标量 <code>Expression</code>。</p>
 
           <div class="diagram-scroll" aria-label="Memo Group GroupExpression 对象模型图">
             <svg class="diagram" viewBox="0 0 1160 650" role="img" aria-labelledby="memo-title memo-desc">
@@ -927,8 +955,8 @@ PhysicalQuickSort[MERGE_SORT]@13 (stats=48,443.3)
               <thead><tr><th>对象</th><th>“拥有”什么</th><th>关键不变量 / 索引</th><th>搜索中的作用</th></tr></thead>
               <tbody>
                 <tr><td><code>Memo</code></td><td>所有 Groups、root、全局 canonical GroupExpression map</td><td>结构相同的 GroupExpression 全局唯一；必要时 merge Group</td><td>初始化、copyIn/rewrite、去重、copyOut / rank</td></tr>
-                <tr><td><code>Group</code></td><td>logical/physical expressions、enforcers、LogicalProperties、Statistics</td><td>表达式逻辑等价；<code>lowestCostPlans</code> 以 required <code>PhysicalProperties</code> 为键</td><td>回答 <code>Best(G, P)</code></td></tr>
-                <tr><td><code>GroupExpression</code></td><td>Plan operator、owner Group、ordered child Groups、rule mask、cost/property tables</td><td><code>equals/hashCode = plan + child Groups</code></td><td>规则匹配和计价的最小单位</td></tr>
+                <tr><td><code>Group</code></td><td>logical/physical <code>GroupExpression</code> entries、enforcers、LogicalProperties、Statistics</td><td>各 logical GroupExpression 必须逻辑等价；<code>lowestCostPlans</code> 以 required <code>PhysicalProperties</code> 为键</td><td>回答 <code>Best(G, P)</code></td></tr>
+                <tr><td><code>GroupExpression</code></td><td>Plan operator、owner Group、ordered child Groups、rule mask、cost/property tables</td><td><code>equals/hashCode = plan + child Groups</code>；它不继承标量 <code>Expression</code></td><td>规则匹配和计价的最小单位</td></tr>
                 <tr><td><code>GroupPlan</code></td><td>一个 Group 的 plan placeholder</td><td>只做树 API 与 Memo 图之间的桥</td><td>让 Rule 看到可组合的 Plan 形态，而不展开所有子树</td></tr>
               </tbody>
             </table>
@@ -1054,7 +1082,7 @@ rewrite complete
             <table>
               <thead><tr><th>Job</th><th>输入</th><th>主要动作</th><th>可能 push 的后续 Job</th></tr></thead>
               <tbody>
-                <tr><td><code>OptimizeGroupJob</code></td><td>Group + required P</td><td>若已有 best 直接返回；否则探索 logical expressions，并计价已有 physical expressions</td><td><code>OptimizeGroupExpressionJob</code>、<code>CostAndEnforcerJob</code></td></tr>
+                <tr><td><code>OptimizeGroupJob</code></td><td>Group + required P</td><td>若已有 best 直接返回；否则探索 logical GroupExpressions，并计价已有 physical GroupExpressions</td><td><code>OptimizeGroupExpressionJob</code>、<code>CostAndEnforcerJob</code></td></tr>
                 <tr><td><code>OptimizeGroupExpressionJob</code></td><td>logical GroupExpression</td><td>按 DPHyp/after-DPHyp/zig-zag/bushy 等状态选择规则</td><td>多个 <code>ApplyRuleJob</code></td></tr>
                 <tr><td><code>ApplyRuleJob</code></td><td>GroupExpression + Rule</td><td>pattern match、transform、copyIn、标记 rule applied</td><td>新 logical 的 explore/stats；新 physical 的 cost/stats</td></tr>
                 <tr><td><code>DeriveStatsJob</code></td><td>GroupExpression</td><td>先调度 children，再用 <code>StatsCalculator</code> 或 <code>HboStatsCalculator</code> 估计当前表达式</td><td>自己的 continuation + child stats jobs</td></tr>
@@ -1067,7 +1095,7 @@ rewrite complete
           <details><summary>为什么显式栈在 Group merge 和新 property 请求下仍能工作</summary><div>
             <ul>
               <li><code>GroupExpression.ruleMasks</code> 防止同一 RuleType 在同一表达式上重复应用；Memo 的 canonical map 再过滤结构重复结果。</li>
-              <li><code>Group.isExplored</code> 是 property-independent：新 required property 不会重跑全部 logical exploration，但仍会重新计价该 Group 已有 physical expressions。</li>
+              <li><code>Group.isExplored</code> 是 property-independent：新 required property 不会重跑全部 logical exploration，但仍会重新计价该 Group 已有 physical GroupExpressions。</li>
               <li><code>Group.lowestCostPlans</code> 才是 property-aware cache；只有 exact required property 已有 best 时 <code>OptimizeGroupJob</code> 才直接返回。</li>
               <li>Group merge 后，栈中可能还有指向旧 GroupExpression 的 Job；<code>isUnused</code> 让这些陈旧 Job 安全退出。</li>
               <li><code>statDerived</code> 避免统计重复派生；scheduler 在每次 pop 前检查规划超时。</li>
@@ -1091,7 +1119,7 @@ Best(G, HASH(keys, shuffleType))
 Best(G, distribution + ORDER BY keys)</code></pre>
           <div class="callout"><strong>术语校正：</strong>“每个 Group 的 required property”应更精确地写成“优化器曾对该 Group 发起的每个 required-property 请求”。<code>Group.lowestCostPlans</code> 的 key 集合就是已经求解的请求，而不是 Group 只有一个 property。</div>
 
-          <h3>一次 physical expression 怎样被完整计价</h3>
+          <h3>一次 physical GroupExpression 怎样被完整计价</h3>
           <ol class="steps">
             <li><code>RequestPropertyDeriver</code> 根据当前 physical operator 和父 required property，生成零个或多个“对子节点的属性要求元组”。</li>
             <li>对元组中的每个 child，递归求 <code>Best(childGroup, requestedChildProperty)</code>；若尚未求出，用 continuation 暂停父 job。</li>
@@ -1199,7 +1227,7 @@ one phase:
 
           <h3>源码逐步展开</h3>
           <ol class="steps">
-            <li><code>Optimizer.execute()</code> 先对 normalized plan 调用 <code>CascadesContext.toMemo()</code>，并对 root logical expressions 运行 <code>DeriveStatsJob</code>。这是 Memo #1。</li>
+            <li><code>Optimizer.execute()</code> 先对 normalized plan 调用 <code>CascadesContext.toMemo()</code>，并对 root logical GroupExpressions 运行 <code>DeriveStatsJob</code>。这是 Memo #1。</li>
             <li><code>Optimizer.isDpHyp()</code> 比较的是 <code>Memo.countMaxContinuousJoin(rewritePlan)</code> 得到的“最大连续 <code>LogicalJoin</code> 算子数”，不是表数。自动选择条件是 <code>continuousJoinNum &gt; maxTableCountUseCascadesJoinReorder</code>；默认阈值为 10，列统计未知时翻倍。普通连通的 N 表二叉 join 通常有 N−1 个 join 算子，因此已知统计下默认从 12 表起才可能自动选择 DPHyp。本三表教学查询需显式设置 <code>enable_dphyp_optimizer=true</code>。</li>
             <li><code>JoinOrderJob</code> 找到可重排 join cluster，<code>HyperGraph.Builder</code> 将非 join 子树变成 nodes、join predicate 变成 edges；<code>SubgraphEnumerator</code> 按 CSG/CMP 枚举合法连接。</li>
             <li><code>PlanReceiver</code> 的 DP table 是 <code>bitmap → Group</code>。每次 emit 用左右 subset Group 的 <code>GroupPlan</code> 构造 <code>LogicalJoin</code> / <code>LogicalProject</code>，为新 subset 建 Group，并调用 <code>Memo.copyIn()</code>。</li>
@@ -1280,8 +1308,6 @@ bash docs/nereids-cascades-q3/capture.sh</code></pre>
           <p>脚本会覆盖 <code>docs/nereids-cascades-q3/</code> 下的阶段结果，并同时采样 Cascades 与显式 DPHyp 模式。若要在客户端逐条执行，使用同一组 session 设置：</p>
           <pre><code>USE &lt;tpch_db&gt;;
 
-SET enable_nereids_planner = true;
-SET enable_fallback_to_original_planner = false;
 SET disable_join_reorder = false;
 SET parallel_pipeline_task_num = 1;
 SET enable_nereids_distribute_planner = true;
@@ -1293,6 +1319,7 @@ SET enable_dphyp_optimizer = true;
 SET dump_nereids_memo = true;
 SET enable_nereids_trace = true;
 SET enable_dphyp_trace = true;</code></pre>
+          <p class="tiny">这里刻意不设置 <code>enable_nereids_planner</code> 或 <code>enable_fallback_to_original_planner</code>：在本文源码基线中它们已经标为 <code>REMOVED</code>，不能用于切换或证明新老优化器路径。</p>
           <p><code>enable_nereids_trace</code> 会把 RewriteEvent、ApplyRuleEvent、PropertyAndCostPairs、EnforcerEvent 等写入 <code>$LOG_DIR/nereids_trace/&lt;queryId&gt;.json</code>；<code>enable_dphyp_trace</code> 会在 FE INFO log 输出 hypergraph Graphviz 和 CSG/CMP 枚举过程。目标语句的 queryId 可从 FE log/audit 信息确认；<code>SELECT last_query_id()</code> 也可在目标语句后立即查询上一条语句 ID。</p>
           <div class="callout warn"><strong>Trace 隔离注意：</strong>当前 <code>NereidsTracer</code> 的事件数组是 static，<code>init()</code> 不会清空旧事件。最干净的做法是在新启动的测试 FE 上只对一条目标语句开启 trace；至少不要在同一个 FE 生命周期中连续跑多轮 traced EXPLAIN 后，把后一个 JSON 当成只属于后一条语句。DPHyp/Cascades 对照应分别采样并注明 trace 边界。</div>
           <p><a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/minidump/NereidsTracer.java">NereidsTracer.java</a> <a class="source" href="../fe/fe-common/src/main/java/org/apache/doris/common/Config.java">Config.java</a></p>
@@ -1306,9 +1333,9 @@ SET enable_dphyp_trace = true;</code></pre>
                 <tr><td>analyzed tree</td><td><code>analyzed/result.txt</code></td><td>ExprId、type、nullable、qualified slot 何时确定？</td></tr>
                 <tr><td>normalization 后的最终 tree</td><td><code>logical/result.txt</code></td><td>filter/project/join/sort 最终收敛成什么结构？它将怎样进入 Memo？</td></tr>
                 <tr><td>normalization 变化过程</td><td><code>logical-process/result.tsv</code></td><td>每一行 process 由哪条 rule 产生？输入/输出怎样变化？这不是一棵单独的最终树。</td></tr>
-                <tr><td>最终 Memo groups 与表达式</td><td><code>memo/{cascades,dphyp}.txt</code> + <code>Memo#copyIn</code></td><td>最终 Memo 中每个 Group 表示什么结果？哪些 logical/physical expressions 属于同一 Group？不要把 DPHyp 文件当成临时 DP table。</td></tr>
+                <tr><td>最终 Memo groups 与表达式</td><td><code>memo/{cascades,dphyp}.txt</code> + <code>Memo#copyIn</code></td><td>最终 Memo 中每个 Group 表示什么结果？哪些 logical/physical GroupExpressions 属于同一 Group？不要把 DPHyp 文件当成临时 DP table。</td></tr>
                 <tr><td>DPHyp enumeration</td><td><code>PlanReceiver#emitCsgCmp</code>、FE trace</td><td>哪个 left/right bitmap 组成新 subset？predicate/edge 是否允许连接？哪个 Group 进入 DP table？</td></tr>
-                <tr><td>physical implementations</td><td><code>ApplyRuleJob#execute</code></td><td>每个 logical operator 产生哪些 physical expressions？为什么 join 是 Hash 或 NLJ？</td></tr>
+                <tr><td>physical implementations</td><td><code>ApplyRuleJob#execute</code></td><td>每个 logical operator 产生哪些 physical GroupExpressions？为什么 join 是 Hash 或 NLJ？</td></tr>
                 <tr><td>required / child / output properties</td><td><code>CostAndEnforcerJob#execute</code></td><td>parent 要什么？当前 operator 向每个 child 要什么？child 实际输出什么？</td></tr>
                 <tr><td>enforcer</td><td><code>EnforceMissingPropertiesHelper#enforceProperty</code></td><td>属性缺口是什么？为什么补 sort/distribute？补完后的 cost 增加多少？</td></tr>
                 <tr><td>最终 cost 与分布式形状</td><td>root Group 的 <code>Lowest Plan ... BEST</code> + <code>EXPLAIN DISTRIBUTED PLAN</code></td><td>root GATHER 下哪个 expression 胜出？PhysicalDistribute 翻译成哪些 Exchange/fragments？</td></tr>
@@ -1324,7 +1351,7 @@ SET enable_dphyp_trace = true;</code></pre>
                 <tr><td>G? · customer</td><td>scan + pushed filter/project</td><td>PhysicalOlapScan / Filter / Project</td><td>ANY / REPLICATED / ...</td><td>leaf</td><td>按实际记录</td><td>逐 property 记录</td></tr>
                 <tr><td>G? · orders</td><td>scan + date filter/project</td><td>对应 physical nodes</td><td>ANY / HASH(o_custkey) / ...</td><td>按 operator 记录</td><td>按实际记录</td><td>逐 property 记录</td></tr>
                 <tr><td>G? · customer ⋈ orders</td><td>原 join / commute / DPHyp chosen form</td><td>PhysicalHashJoin 或 NLJ</td><td>ANY / HASH / ...</td><td>[ANY, REPLICATED] 或 [HASH, HASH]</td><td>Broadcast/Shuffle 对应 distribute</td><td>比较 network + child cost</td></tr>
-                <tr><td>G? · all three tables</td><td>不同合法 join order</td><td>join physical expressions</td><td>上层 sort 传入</td><td>记录每一组 child tuple</td><td>按实际记录</td><td>选出 join subtree best</td></tr>
+                <tr><td>G? · all three tables</td><td>不同合法 join order</td><td>join physical GroupExpressions</td><td>上层 sort 传入</td><td>记录每一组 child tuple</td><td>按实际记录</td><td>选出 join subtree best</td></tr>
                 <tr><td>ROOT · result/sort</td><td>LogicalResultSink + LogicalSort</td><td>LOCAL/MERGE 或 GATHER sort</td><td>GATHER</td><td>GATHER + order</td><td>Gather + sort</td><td>root BEST scalar cost</td></tr>
               </tbody>
             </table>
@@ -1333,7 +1360,7 @@ SET enable_dphyp_trace = true;</code></pre>
 
           <details open><summary><code>EXPLAIN MEMO PLAN</code> 中每段文字对应哪个字段</summary><div>
             <ul>
-              <li><strong>Logical Expressions / Physical Expressions / Enforcers</strong>：<code>Group</code> 的三类表达式容器。</li>
+              <li><strong>Logical Expressions / Physical Expressions / Enforcers</strong>：<code>Group</code> 的三类 <code>GroupExpression</code> 容器；这里不是标量 Expression tree。</li>
               <li><strong>Chosen Expression / Chosen Properties</strong>：最终 copy-out 选择状态。</li>
               <li><strong>Statistics</strong>：Group-level row count 与列统计详情。</li>
               <li><strong>Lowest Plan / Cost / Properties</strong>：<code>Group.lowestCostPlans</code> 的每个 property entry。</li>
@@ -1389,14 +1416,16 @@ git diff -- \
 
         <section id="misconceptions">
           <p class="section-kicker">13 · Source-level corrections</p>
-          <h2>读 Cascades 源码最常见的十三个误区</h2>
+          <h2>读 Cascades 源码最常见的十五个误区</h2>
           <div class="table-wrap">
             <table>
               <thead><tr><th>误区</th><th>当前 Doris 源码中的准确说法</th></tr></thead>
               <tbody>
+                <tr><td>Nereids <code>Plan</code> 与 <code>Expression</code> 是同一种节点</td><td>它们分别使用 <code>TreeNode&lt;Plan&gt;</code> 与 <code>TreeNode&lt;Expression&gt;</code>，只共享遍历协议；children 类型、语义和 visitor 都彼此独立。</td></tr>
                 <tr><td><code>Expression</code> 就是 <code>GroupExpression</code></td><td>前者是标量树；后者是 Memo 中“plan operator + child Groups”的关系表达式。</td></tr>
+                <tr><td>看到 <code>planner.PlanNode</code> 就说明走了旧优化器</td><td>当前普通 query 只构造 NereidsPlanner；最优 Nereids PhysicalPlan 仍会翻译成既有 PlanNode/Expr/PlanFragment 供执行层使用。</td></tr>
                 <tr><td>输出 Schema 一样就能进入同一 Group</td><td>Schema/nullability 只是必要检查；等价性必须由合法 transformation 保证，Memo 不做语义证明。</td></tr>
-                <tr><td>一个 Group 只有一个 logical expression</td><td>初始化时通常一个；exploration 后可以有多个。<code>getLogicalExpression()</code> 只适用于代码明确保证唯一的上下文。</td></tr>
+                <tr><td>一个 Group 只有一个 logical GroupExpression</td><td>初始化时通常一个；exploration 后可以有多个。<code>getLogicalExpression()</code> 只适用于代码明确保证唯一的上下文。</td></tr>
                 <tr><td>一个 Group 有一个全局 best plan</td><td>best table 的 key 是 required <code>PhysicalProperties</code>；正确写法是 <code>Best(G, P)</code>。</td></tr>
                 <tr><td>required property 是 Group 固有属性</td><td>它随 <code>JobContext</code> 请求向下传播；Group 只是缓存已经求解的 property entries。</td></tr>
                 <tr><td>每个 join 都会同时比较 Hash / Merge / NLJ</td><td>Hash 与 NLJ implementation rule 由 <code>shouldNestedLoopJoin</code> 互斥；当前没有 Physical Merge Join。</td></tr>
@@ -1420,10 +1449,14 @@ git diff -- \
             <details open><summary>入口、IR 与语义属性</summary><div>
               <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/NereidsPlanner.java">NereidsPlanner.java</a>
               <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/CascadesContext.java">CascadesContext.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/TreeNode.java">Nereids TreeNode.java</a>
               <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/Plan.java">Plan.java</a>
               <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/logical/LogicalPlan.java">LogicalPlan.java</a>
               <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/physical/PhysicalPlan.java">PhysicalPlan.java</a>
               <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/expressions/Expression.java">Expression.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/glue/translator/ExpressionTranslator.java">ExpressionTranslator.java</a>
+              <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/planner/PlanNode.java">planner.PlanNode.java</a>
+              <a class="source" href="../fe/fe-catalog/src/main/java/org/apache/doris/analysis/Expr.java">analysis.Expr.java</a>
               <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/LogicalProperties.java">LogicalProperties.java</a>
               <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/DataTrait.java">DataTrait.java</a>
             </div></details>

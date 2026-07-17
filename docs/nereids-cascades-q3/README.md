@@ -41,6 +41,11 @@ bash docs/nereids-cascades-q3/capture.sh
 
 ## 当前采样边界
 
+- 当前源码基线的普通 query 规划入口固定创建 `NereidsPlanner`；已标记为 `REMOVED` 的
+  `enable_nereids_planner` 和 `enable_fallback_to_original_planner` 不是新老优化器选择开关，
+  因此采样脚本不设置它们。
+- `physical/` 是 Nereids `PhysicalPlan`；`distributed/` 中出现的 `PlanNode`、`Expr`、
+  `PlanFragment` 是 translator 之后复用的执行层结构，不能据此判断 SQL 使用了旧优化器。
 - 源码版本、tablet ID、ExprId、Group ID、instance ID、cost 和行数都可能随环境变化。
 - `logical-process/result.tsv` 和 `memo/*.txt` 是完整原始输出，适合搜索，不适合从头逐行读。
 - `EXPLAIN MEMO PLAN` 展示最终 Memo；DPHyp 的临时 DP table 仍需结合 DPHyp trace 或断点观察。

@@ -24,8 +24,6 @@ query=$(<"${capture_root}/query.sql")
 query=${query%;}
 
 common_session="
-SET enable_nereids_planner=true;
-SET enable_fallback_to_original_planner=false;
 SET disable_join_reorder=false;
 SET parallel_pipeline_task_num=1;
 SET enable_nereids_distribute_planner=true;
