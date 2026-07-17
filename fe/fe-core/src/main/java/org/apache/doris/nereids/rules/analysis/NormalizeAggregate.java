@@ -19,6 +19,7 @@ package org.apache.doris.nereids.rules.analysis;
 
 import org.apache.doris.nereids.CascadesContext;
 import org.apache.doris.nereids.exceptions.AnalysisException;
+import org.apache.doris.nereids.properties.DataTrait;
 import org.apache.doris.nereids.rules.Rule;
 import org.apache.doris.nereids.rules.RuleType;
 import org.apache.doris.nereids.rules.expression.ExpressionRewriteContext;
@@ -66,7 +67,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * normalize aggregate's group keys and AggregateFunction's child to SlotReference
@@ -156,7 +156,7 @@ public class NormalizeAggregate implements RewriteRuleFactory, NormalizeToSlot {
      *            c. alias with window-agg
      */
     @SuppressWarnings("checkstyle:UnusedLocalVariable")
-    public LogicalPlan normalizeAgg(LogicalAggregate<Plan> aggregate, Optional<LogicalHaving<?>> having,
+    private LogicalPlan normalizeAgg(LogicalAggregate<Plan> aggregate, Optional<LogicalHaving<?>> having,
             CascadesContext ctx) {
         // Push down exprs:
         // collect group by exprs
@@ -173,6 +173,12 @@ public class NormalizeAggregate implements RewriteRuleFactory, NormalizeToSlot {
         ImmutableSet.Builder<Expression> needPushDownSelfExprs = ImmutableSet.builder();
         ImmutableSet.Builder<Expression> needPushDownInputs = ImmutableSet.builder();
         for (AggregateFunction aggFunc : aggFuncs.keySet()) {
+            for (Expression child : aggFunc.children()) {
+                if (ExpressionUtils.hasNonWindowAggregateFunction(child)) {
+                    throw new AnalysisException(
+                            "aggregate function cannot contain aggregate parameters");
+                }
+            }
             if (!aggFunc.isDistinct()) {
                 for (Expression arg : aggFunc.children()) {
                     // should not push down literal under aggregate
@@ -182,7 +188,11 @@ public class NormalizeAggregate implements RewriteRuleFactory, NormalizeToSlot {
                     }
                     if (arg.containsType(SubqueryExpr.class, WindowExpression.class, Unnest.class,
                             PreferPushDownProject.class)) {
-                        needPushDownSelfExprs.add(arg);
+                        if (arg instanceof OrderExpression) {
+                            needPushDownSelfExprs.add(arg.child(0));
+                        } else {
+                            needPushDownSelfExprs.add(arg);
+                        }
                     } else {
                         needPushDownInputs.add(arg);
                     }
@@ -195,8 +205,8 @@ public class NormalizeAggregate implements RewriteRuleFactory, NormalizeToSlot {
                         continue;
                     }
 
-                    Collection<? extends Expression> inputSlots
-                            = arg instanceof OrderExpression ? arg.getInputSlots() : ImmutableList.of(arg);
+                    Collection<? extends Expression> inputSlots = arg instanceof OrderExpression
+                            ? ImmutableList.of(((OrderExpression) arg).child()) : ImmutableList.of(arg);
                     for (Expression input : inputSlots) {
                         if (input instanceof SlotReference) {
                             needPushDownInputs.add(input);
@@ -253,11 +263,6 @@ public class NormalizeAggregate implements RewriteRuleFactory, NormalizeToSlot {
         // normalize trivial-aggs by bottomProjects
         List<Expression> normalizedAggFuncs =
                 bottomSlotContext.normalizeToUseSlotRef(SessionVarGuardExpr.getExprWithGuard(aggFuncs));
-        if (normalizedAggFuncs.stream().anyMatch(agg -> !agg.children().isEmpty()
-                && agg.child(0).containsType(AggregateFunction.class))) {
-            throw new AnalysisException(
-                    "aggregate function cannot contain aggregate parameters");
-        }
 
         // build normalized agg output
         NormalizeToSlotContext normalizedAggFuncsToSlotContext =
@@ -299,15 +304,47 @@ public class NormalizeAggregate implements RewriteRuleFactory, NormalizeToSlot {
                 }
             }
             if (!missingSlotsInAggregate.isEmpty()) {
-                if (SqlModeHelper.hasOnlyFullGroupBy()) {
-                    throw new AnalysisException(String.format("PROJECT expression %s must appear in the GROUP BY"
-                            + " clause or be used in an aggregate function",
-                            missingSlotsInAggregate.stream()
-                                    .map(slot -> "'" + slot.getName() + "'")
-                                    .collect(Collectors.joining(", "))));
-                } else {
-                    // for any slots missing in aggregate's output, we should add a any_value(slot) into
-                    // aggregate's output list and slot itself into bottom project's output list
+                // Under only_full_group_by, a non-grouped, non-aggregated output column that is constant for
+                // every input row (uniform and not null) is valid (MySQL functional dependency), e.g.
+                //   SELECT a AS b, b AS c FROM (SELECT 1 AS a, 2 AS b) t GROUP BY b, c
+                // where 'a' is a constant column of the derived table. We add such a column to the group-by
+                // keys rather than wrapping it in any_value(): grouping by a constant does not change the
+                // grouping, makes the column a valid output, and changes no exprId, so references in ancestors
+                // (e.g. the result sink) stay valid -- any_value() would need a new exprId that this rule
+                // cannot propagate upward. The redundant uniform key is later removed by
+                // EliminateGroupByKeyByUniform. Only done when the aggregate already has group-by keys; for a
+                // global aggregate adding a key would change empty-input semantics. isUniformAndNotNull (not
+                // isUniform) excludes the nullable side of an outer join, which holds the uniform value on
+                // matched rows but NULL on unmatched rows of the same group.
+                Set<Slot> constantMissingSlots = new HashSet<>();
+                if (SqlModeHelper.hasOnlyFullGroupBy() && !normalizedGroupExprs.isEmpty()) {
+                    DataTrait childTrait = aggregate.child().getLogicalProperties().getTrait();
+                    for (Slot slot : missingSlotsInAggregate) {
+                        if (childTrait.isUniformAndNotNull(slot)) {
+                            constantMissingSlots.add(slot);
+                        }
+                    }
+                }
+                if (!constantMissingSlots.isEmpty()) {
+                    bottomProjects = Sets.union(bottomProjects, constantMissingSlots);
+                    normalizedGroupExprs = ImmutableList.<Expression>builder()
+                            .addAll(normalizedGroupExprs).addAll(constantMissingSlots).build();
+                    for (Slot slot : constantMissingSlots) {
+                        normalizedAggOutputBuilder.add(slot);
+                    }
+                    missingSlotsInAggregate.removeAll(constantMissingSlots);
+                }
+                if (!missingSlotsInAggregate.isEmpty()) {
+                    if (SqlModeHelper.hasOnlyFullGroupBy()) {
+                        List<String> invalidSlotNames = new ArrayList<>();
+                        for (Slot slot : missingSlotsInAggregate) {
+                            invalidSlotNames.add("'" + slot.getName() + "'");
+                        }
+                        throw new AnalysisException(String.format("PROJECT expression %s must appear in the GROUP BY"
+                                + " clause or be used in an aggregate function", String.join(", ", invalidSlotNames)));
+                    }
+                    // only_full_group_by disabled: for the remaining missing slots add an any_value(slot) into
+                    // the aggregate's output and the slot itself into the bottom project's output.
                     bottomProjects = Sets.union(bottomProjects, missingSlotsInAggregate);
                     Map<Expression, Expression> replaceMap = Maps.newHashMap();
                     Map<String, Alias> normalizedAggExistingAlias = Maps.newHashMap();
@@ -345,8 +382,12 @@ public class NormalizeAggregate implements RewriteRuleFactory, NormalizeToSlot {
         LogicalAggregate<?> newAggregate =
                 aggregate.withNormalized(normalizedGroupExprs, normalizedAggOutputBuilder.build(), bottomPlan);
         ExpressionRewriteContext rewriteContext = new ExpressionRewriteContext(ctx);
+        // Use the current aggregate output (newAggregate already contains the constant group-key slots added
+        // for missing slots above), not the stale normalizedAggOutput snapshot, so constant group-key
+        // elimination keeps those outputs and does not leave dangling references in upperProjects.
         LogicalProject<Plan> project = eliminateGroupByConstant(groupByExprContext, rewriteContext,
-                normalizedGroupExprs, normalizedAggOutput, bottomProjects, aggregate, upperProjects, newAggregate);
+                normalizedGroupExprs, newAggregate.getOutputExpressions(), bottomProjects, aggregate,
+                upperProjects, newAggregate);
 
         if (!having.isPresent()) {
             return project;

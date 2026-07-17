@@ -29,9 +29,12 @@
 #include "core/data_type/define_primitive_type.h"
 #include "core/data_type/primitive_type.h"
 #include "core/value/vdatetime_value.h"
+#include "exprs/block_bloom_filter.hpp"
 #include "exprs/create_predicate_function.h"
 #include "exprs/function/cast/cast_to_datev2_impl.hpp"
 #include "gtest/gtest.h"
+#include "runtime/memory/mem_tracker_limiter.h"
+#include "runtime/thread_context.h"
 #include "testutil/column_helper.h"
 #include "util/url_coding.h"
 
@@ -77,6 +80,30 @@ TEST_F(BloomFilterFuncTest, Init) {
 
     bloom_filter_func.light_copy(&bloom_filter_func2);
     bloom_filter_func2.light_copy(&bloom_filter_func);
+}
+
+TEST_F(BloomFilterFuncTest, TrackBlockBloomFilterMemory) {
+    constexpr int initial_log_space_bytes = 22;
+    constexpr int resized_log_space_bytes = 23;
+    auto mem_tracker = MemTrackerLimiter::create_shared(MemTrackerLimiter::Type::OTHER,
+                                                        "BlockBloomFilterMemoryTest");
+    auto switch_mem_tracker = SwitchThreadMemTrackerLimiter(mem_tracker);
+    thread_context()->thread_mem_tracker_mgr->flush_untracked_mem();
+    const int64_t initial_consumption = mem_tracker->consumption();
+
+    BlockBloomFilter bloom_filter;
+    ASSERT_TRUE(bloom_filter.init(initial_log_space_bytes, 0).ok());
+    thread_context()->thread_mem_tracker_mgr->flush_untracked_mem();
+    EXPECT_EQ(mem_tracker->consumption(), initial_consumption + (1ULL << initial_log_space_bytes));
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(bloom_filter.directory().data) % 32, 0);
+
+    ASSERT_TRUE(bloom_filter.init(resized_log_space_bytes, 0).ok());
+    thread_context()->thread_mem_tracker_mgr->flush_untracked_mem();
+    EXPECT_EQ(mem_tracker->consumption(), initial_consumption + (1ULL << resized_log_space_bytes));
+
+    bloom_filter.close();
+    thread_context()->thread_mem_tracker_mgr->flush_untracked_mem();
+    EXPECT_EQ(mem_tracker->consumption(), initial_consumption);
 }
 
 TEST_F(BloomFilterFuncTest, FixedLenToUInt32) {
@@ -183,23 +210,17 @@ TEST_F(BloomFilterFuncTest, InsertFixedLen) {
     PODArray<uint16_t> offsets(4);
     std::iota(offsets.begin(), offsets.end(), 0);
 
-    std::vector<StringRef> strings(4);
-    strings[0] = StringRef("aa");
-    strings[1] = StringRef("bb");
-    strings[2] = StringRef("cc");
-    strings[3] = StringRef("dd");
+    auto probe_column = ColumnHelper::create_column<DataTypeString>({"aa", "bb", "cc", "dd"});
 
     auto find_count = bloom_filter_func2.find_fixed_len_olap_engine(
-            reinterpret_cast<const char*>(strings.data()), nullmap_column->get_data().data(),
-            offsets.data(), 4, false);
+            *probe_column, nullmap_column->get_data().data(), offsets.data(), 4, false);
 
     ASSERT_EQ(find_count, 4);
 
     nullmap_column->get_data()[1] = 0;
     nullmap_column->get_data()[3] = 0;
     find_count = bloom_filter_func2.find_fixed_len_olap_engine(
-            reinterpret_cast<const char*>(strings.data()), nullmap_column->get_data().data(),
-            offsets.data(), 4, false);
+            *probe_column, nullmap_column->get_data().data(), offsets.data(), 4, false);
 
     ASSERT_EQ(find_count, 2);
     ASSERT_EQ(offsets[0], 0);
@@ -417,7 +438,7 @@ TEST_F(BloomFilterFuncTest, FindDictOlapEngine) {
     std::vector<StringRef> dicts = {StringRef("aa"),  StringRef("bb"),  StringRef("cc"),
                                     StringRef("dd"),  StringRef("aab"), StringRef("bbc"),
                                     StringRef("ccd"), StringRef("dde")};
-    auto column = ColumnDictI32::create(FieldType::OLAP_FIELD_TYPE_VARCHAR);
+    auto column = ColumnDictI32::create();
     column->reserve(count);
     std::vector<int32_t> data(count);
     for (size_t i = 0; i != count; ++i) {
@@ -483,9 +504,8 @@ TEST_F(BloomFilterFuncTest, FindFixedLenOlapEngine) {
     PODArray<uint8_t> nullmap;
     uint8_t flag = 0;
     nullmap.assign(count, flag);
-    auto find_count = bloom_filter_func.find_fixed_len_olap_engine(
-            reinterpret_cast<const char*>(decimal_column2->get_data().data()), nullmap.data(),
-            offsets.data(), count, true);
+    auto find_count = bloom_filter_func.find_fixed_len_olap_engine(*decimal_column2, nullmap.data(),
+                                                                   offsets.data(), count, true);
     ASSERT_EQ(find_count, count);
 
     BloomFilterFunc<PrimitiveType::TYPE_CHAR> bloom_filter_func2(true);
@@ -500,29 +520,28 @@ TEST_F(BloomFilterFuncTest, FindFixedLenOlapEngine) {
 
     // CHAR padding is stripped at the page decoder now, so the runtime BF
     // probe sees natural-length StringRefs; no trailing '\0' bytes here.
-    StringRef strings[] = {StringRef("aa"), StringRef("bb"), StringRef("cc"), StringRef("dd"),
-                           StringRef("ef")};
+    auto probe_column = ColumnHelper::create_column<DataTypeString>({"aa", "bb", "cc", "dd", "ef"});
 
     PODArray<uint16_t> offsets2(5);
     std::iota(offsets2.begin(), offsets2.end(), 0);
 
-    find_count = bloom_filter_func2.find_fixed_len_olap_engine(
-            reinterpret_cast<const char*>(&strings[0]), nullmap.data(), offsets2.data(), 5, false);
+    find_count = bloom_filter_func2.find_fixed_len_olap_engine(*probe_column, nullmap.data(),
+                                                               offsets2.data(), 5, false);
     ASSERT_EQ(find_count, 4);
 
     std::iota(offsets2.begin(), offsets2.end(), 0);
-    find_count = bloom_filter_func2.find_fixed_len_olap_engine(
-            reinterpret_cast<const char*>(&strings[0]), nullmap.data(), offsets2.data(), 5, true);
+    find_count = bloom_filter_func2.find_fixed_len_olap_engine(*probe_column, nullmap.data(),
+                                                               offsets2.data(), 5, true);
     ASSERT_EQ(find_count, 4);
 
     std::iota(offsets2.begin(), offsets2.end(), 0);
-    find_count = bloom_filter_func2.find_fixed_len_olap_engine(
-            reinterpret_cast<const char*>(&strings[0]), nullptr, offsets2.data(), 5, false);
+    find_count = bloom_filter_func2.find_fixed_len_olap_engine(*probe_column, nullptr,
+                                                               offsets2.data(), 5, false);
     ASSERT_EQ(find_count, 4);
 
     std::iota(offsets2.begin(), offsets2.end(), 0);
-    find_count = bloom_filter_func2.find_fixed_len_olap_engine(
-            reinterpret_cast<const char*>(&strings[0]), nullptr, offsets2.data(), 5, true);
+    find_count = bloom_filter_func2.find_fixed_len_olap_engine(*probe_column, nullptr,
+                                                               offsets2.data(), 5, true);
     ASSERT_EQ(find_count, 4);
 
     PODArray<uint8_t> nullmap2;
@@ -531,8 +550,8 @@ TEST_F(BloomFilterFuncTest, FindFixedLenOlapEngine) {
     nullmap2[2] = 1;
 
     std::iota(offsets2.begin(), offsets2.end(), 0);
-    find_count = bloom_filter_func2.find_fixed_len_olap_engine(
-            reinterpret_cast<const char*>(&strings[0]), nullmap2.data(), offsets2.data(), 5, false);
+    find_count = bloom_filter_func2.find_fixed_len_olap_engine(*probe_column, nullmap2.data(),
+                                                               offsets2.data(), 5, false);
     ASSERT_EQ(find_count, 2);
     ASSERT_EQ(offsets2[0], 0);
     ASSERT_EQ(offsets2[1], 3);
