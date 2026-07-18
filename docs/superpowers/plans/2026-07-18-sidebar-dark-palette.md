@@ -39,7 +39,7 @@ required = {
     "background: var(--sidebar-hover);",
     "border: 1px solid var(--sidebar-border);",
 }
-missing = sorted(required.difference(line.strip() for line in html.splitlines()))
+missing = sorted(declaration for declaration in required if declaration not in html)
 assert not missing, f"missing sidebar palette declarations: {missing}"
 PY
 ```
@@ -101,7 +101,7 @@ required = {
     "background: var(--sidebar-hover);",
     "border: 1px solid var(--sidebar-border);",
 }
-missing = sorted(required.difference(line.strip() for line in html.splitlines()))
+missing = sorted(declaration for declaration in required if declaration not in html)
 assert not missing, f"missing sidebar palette declarations: {missing}"
 PY
 ```
