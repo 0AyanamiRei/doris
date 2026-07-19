@@ -1531,5 +1531,14 @@ git diff -- \
     </main>
     <footer>Doris Nereids Cascades Framework Guide · source baseline <code>daf8eaa464cb</code> · self-contained HTML</footer>
   </div>
+  <script>
+    const editorSourceRoot =
+        "cursor://vscode-remote/ssh-remote+devbox/data/data3/huangruixin/main/doris-master/doris/";
+    document.querySelectorAll('a.source[href^="../"]').forEach((sourceLink) => {
+      const repositoryPath = sourceLink.getAttribute("href").slice(3);
+      sourceLink.href = editorSourceRoot + repositoryPath;
+      sourceLink.title = "在 Cursor 中打开源码";
+    });
+  </script>
 </body>
 </html>
