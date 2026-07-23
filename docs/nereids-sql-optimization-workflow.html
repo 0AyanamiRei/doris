@@ -1,0 +1,1967 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="用一条三表 SQL 串起 Apache Doris Nereids 从解析、分析、逻辑重写、Memo 搜索、物理计划选择到分布式计划生成的源码工作流。">
+  <title>一条 SQL 穿过 Doris Nereids 优化器</title>
+  <style>
+    :root {
+      --ink: #17243a;
+      --muted: #5d6c80;
+      --paper: #f3f0e8;
+      --surface: #fffdf8;
+      --surface-2: #edf5f2;
+      --line: #d6d1c5;
+      --deep: #17324d;
+      --deep-2: #244963;
+      --teal: #0d766e;
+      --teal-soft: #d8efea;
+      --amber: #ad5811;
+      --amber-soft: #f7e7ce;
+      --red: #a7463b;
+      --red-soft: #f5ded9;
+      --violet: #65558f;
+      --violet-soft: #e8e1f2;
+      --blue: #356381;
+      --blue-soft: #e4edf6;
+      --code: #102233;
+      --code-ink: #e8f1f5;
+      --sidebar-bg: #101c28;
+      --sidebar-primary: #f4f8fb;
+      --sidebar-text: #c7d5df;
+      --sidebar-muted: #91a7b7;
+      --sidebar-hover: #1d3445;
+      --sidebar-border: #30495b;
+      --shadow: 0 18px 55px rgba(23, 50, 77, .10);
+      --radius: 18px;
+      --content: 1180px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 8% 1%, rgba(13, 118, 110, .11), transparent 27rem),
+        radial-gradient(circle at 95% 8%, rgba(173, 88, 17, .10), transparent 24rem),
+        var(--paper);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      line-height: 1.72;
+    }
+
+    a {
+      color: var(--teal);
+      text-decoration-thickness: .08em;
+      text-underline-offset: .18em;
+    }
+    a:hover { color: var(--amber); }
+    a:focus-visible, summary:focus-visible {
+      outline: 3px solid var(--amber);
+      outline-offset: 3px;
+    }
+    code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    code {
+      padding: .12em .38em;
+      border-radius: .35em;
+      background: rgba(23, 50, 77, .08);
+      font-size: .91em;
+      overflow-wrap: anywhere;
+    }
+    pre {
+      margin: 1rem 0;
+      padding: 1.15rem 1.25rem;
+      color: var(--code-ink);
+      background: var(--code);
+      border-radius: 14px;
+      overflow: auto;
+      line-height: 1.58;
+      box-shadow: inset 0 1px rgba(255, 255, 255, .08);
+    }
+    pre code {
+      padding: 0;
+      color: inherit;
+      background: transparent;
+      font-size: .86rem;
+    }
+    h1, h2, h3, h4 {
+      color: var(--deep);
+      line-height: 1.25;
+      text-wrap: balance;
+    }
+    h1 {
+      margin: .25rem 0 1rem;
+      font-size: clamp(2.35rem, 6vw, 4.8rem);
+      letter-spacing: -.045em;
+    }
+    h2 {
+      margin: 0 0 1rem;
+      font-size: clamp(1.75rem, 3vw, 2.5rem);
+      letter-spacing: -.025em;
+    }
+    h3 { margin: 1.8rem 0 .7rem; font-size: 1.28rem; }
+    h4 { margin: .2rem 0 .45rem; font-size: 1rem; letter-spacing: .02em; }
+    p { margin: .65rem 0 1rem; }
+    ul, ol { padding-left: 1.35rem; }
+    li + li { margin-top: .42rem; }
+
+    .skip-link {
+      position: fixed;
+      top: .7rem;
+      left: .7rem;
+      z-index: 30;
+      transform: translateY(-170%);
+      padding: .6rem .9rem;
+      color: #fff;
+      background: var(--deep);
+      border-radius: .5rem;
+    }
+    .skip-link:focus { transform: translateY(0); }
+    .layout { min-height: 100vh; }
+    .sidebar {
+      display: none;
+      position: fixed;
+      inset: 0 auto 0 0;
+      z-index: 10;
+      width: 292px;
+      padding: 2rem 1.35rem 1.4rem;
+      color: var(--sidebar-text);
+      background: var(--sidebar-bg);
+      overflow-y: auto;
+    }
+    .side-brand { margin-bottom: 1.4rem; }
+    .side-brand strong {
+      display: block;
+      color: var(--sidebar-primary);
+      font-size: 1.13rem;
+    }
+    .side-brand span {
+      display: block;
+      margin-top: .35rem;
+      color: var(--sidebar-muted);
+      font-size: .8rem;
+    }
+    .sidebar nav a {
+      display: block;
+      margin: .1rem 0;
+      padding: .43rem .62rem;
+      border-radius: .55rem;
+      color: var(--sidebar-text);
+      text-decoration: none;
+      font-size: .84rem;
+    }
+    .sidebar nav a:hover {
+      color: var(--sidebar-primary);
+      background: var(--sidebar-hover);
+    }
+    .side-note {
+      margin-top: 1.4rem;
+      padding: .8rem;
+      border: 1px solid var(--sidebar-border);
+      border-radius: .7rem;
+      color: var(--sidebar-muted);
+      font-size: .74rem;
+    }
+
+    main { min-width: 0; }
+    .hero {
+      position: relative;
+      padding: clamp(3.4rem, 9vw, 7.2rem)
+        max(1.2rem, calc((100vw - var(--content)) / 2)) 4rem;
+      overflow: hidden;
+    }
+    .hero::after {
+      content: "SQL";
+      position: absolute;
+      right: max(1rem, calc((100vw - var(--content)) / 2));
+      top: -1.5rem;
+      z-index: -1;
+      color: rgba(23, 50, 77, .045);
+      font: 800 clamp(8rem, 24vw, 20rem)/1 Georgia, serif;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: .55rem;
+      margin-bottom: .9rem;
+      color: var(--teal);
+      font-weight: 760;
+      letter-spacing: .09em;
+      text-transform: uppercase;
+      font-size: .76rem;
+    }
+    .eyebrow::before {
+      content: "";
+      width: 2.2rem;
+      height: 3px;
+      background: var(--amber);
+    }
+    .hero .lede {
+      max-width: 900px;
+      color: var(--muted);
+      font-size: clamp(1.05rem, 2vw, 1.35rem);
+    }
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .55rem;
+      margin: 1.65rem 0;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: .34rem .68rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: var(--surface);
+      font-size: .78rem;
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: .9rem;
+      margin-top: 2.25rem;
+    }
+    .truth {
+      padding: 1.05rem;
+      border: 1px solid rgba(13, 118, 110, .2);
+      border-radius: 13px;
+      background: rgba(255, 253, 248, .82);
+      box-shadow: var(--shadow);
+    }
+    .truth b {
+      display: block;
+      margin-bottom: .3rem;
+      color: var(--teal);
+    }
+    .truth span { color: var(--muted); font-size: .9rem; }
+
+    .content {
+      width: min(var(--content), calc(100% - 2.4rem));
+      margin: 0 auto 6rem;
+    }
+    section {
+      scroll-margin-top: 1.4rem;
+      margin: 0 0 1.4rem;
+      padding: clamp(1.3rem, 3vw, 2.5rem);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255, 253, 248, .95);
+      box-shadow: var(--shadow);
+    }
+    .section-kicker {
+      margin: 0 0 .4rem;
+      color: var(--amber);
+      font-weight: 800;
+      font-size: .75rem;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+    }
+    .section-intro {
+      max-width: 960px;
+      color: var(--muted);
+      font-size: 1.02rem;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
+    }
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1rem;
+    }
+    .card {
+      padding: 1rem 1.1rem;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--surface);
+    }
+    .card p:last-child, .card ul:last-child { margin-bottom: .2rem; }
+    .callout {
+      margin: 1.2rem 0;
+      padding: 1rem 1.15rem;
+      border-left: 5px solid var(--teal);
+      border-radius: 0 12px 12px 0;
+      background: var(--teal-soft);
+    }
+    .callout.warn {
+      border-color: var(--amber);
+      background: var(--amber-soft);
+    }
+    .callout.red {
+      border-color: var(--red);
+      background: var(--red-soft);
+    }
+    .callout.violet {
+      border-color: var(--violet);
+      background: var(--violet-soft);
+    }
+    .tiny { color: var(--muted); font-size: .83rem; }
+    .source {
+      display: inline-block;
+      margin: .2rem .28rem .2rem 0;
+      padding: .25rem .5rem;
+      border: 1px solid var(--line);
+      border-radius: .5rem;
+      background: var(--surface);
+      font: .76rem/1.35 "SFMono-Regular", Consolas, monospace;
+      text-decoration: none;
+    }
+
+    .phase-map {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: .75rem;
+      margin: 1.5rem 0;
+      padding: 0;
+      list-style: none;
+      counter-reset: phase;
+    }
+    .phase-map li {
+      position: relative;
+      min-height: 9.6rem;
+      padding: 2.8rem .9rem .9rem;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--surface);
+      counter-increment: phase;
+    }
+    .phase-map li::before {
+      content: counter(phase, decimal-leading-zero);
+      position: absolute;
+      top: .8rem;
+      left: .9rem;
+      display: grid;
+      place-items: center;
+      width: 2rem;
+      height: 2rem;
+      border-radius: 50%;
+      color: #fff;
+      background: var(--teal);
+      font-size: .72rem;
+      font-weight: 800;
+    }
+    .phase-map li::after {
+      content: "→";
+      position: absolute;
+      top: 43%;
+      right: -.72rem;
+      z-index: 2;
+      color: var(--amber);
+      font-size: 1.45rem;
+      font-weight: 900;
+    }
+    .phase-map li:nth-child(4n)::after,
+    .phase-map li:last-child::after { content: ""; }
+    .phase-map strong {
+      display: block;
+      color: var(--deep);
+      line-height: 1.25;
+    }
+    .phase-map small {
+      display: block;
+      margin-top: .5rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .phase-map .view-phase {
+      border-color: rgba(101, 85, 143, .38);
+      background: var(--violet-soft);
+    }
+    .phase-map .view-phase::before { background: var(--violet); }
+
+    .stage-title {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 1rem;
+      align-items: start;
+      margin-bottom: 1rem;
+    }
+    .stage-no {
+      display: grid;
+      place-items: center;
+      width: 3.2rem;
+      height: 3.2rem;
+      border-radius: 15px;
+      color: #fff;
+      background: var(--deep);
+      font: 800 1rem/1 "SFMono-Regular", Consolas, monospace;
+      box-shadow: var(--shadow);
+    }
+    .stage-title h2 { margin-bottom: .35rem; }
+    .stage-title p { margin: 0; color: var(--muted); }
+
+    .contract {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: .75rem;
+      margin: 1rem 0;
+    }
+    .contract div {
+      padding: .85rem;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: var(--surface-2);
+    }
+    .contract b {
+      display: block;
+      margin-bottom: .3rem;
+      color: var(--teal);
+      font-size: .78rem;
+      letter-spacing: .04em;
+    }
+    .contract span { font-size: .9rem; }
+
+    .table-wrap {
+      margin: 1rem 0;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      overflow-x: auto;
+      background: var(--surface);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 740px;
+    }
+    th, td {
+      padding: .82rem .9rem;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      color: var(--deep);
+      background: var(--surface-2);
+      font-size: .82rem;
+      letter-spacing: .03em;
+    }
+    td { font-size: .9rem; }
+    tr:last-child td { border-bottom: 0; }
+
+    .object-flow {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: .75rem;
+      margin: 1rem 0;
+    }
+    .object-flow .node {
+      position: relative;
+      padding: 1rem;
+      border: 1px solid var(--line);
+      border-top: 4px solid var(--blue);
+      border-radius: 12px;
+      background: var(--surface);
+    }
+    .object-flow .node:nth-child(2n) { border-top-color: var(--violet); }
+    .object-flow .node:nth-child(3n) { border-top-color: var(--teal); }
+    .object-flow b { display: block; color: var(--deep); }
+    .object-flow span { color: var(--muted); font-size: .86rem; }
+
+    .view-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: .9rem;
+      margin: 1rem 0;
+    }
+    .view-card {
+      padding: 1rem;
+      border: 1px solid rgba(101, 85, 143, .35);
+      border-radius: 13px;
+      background: var(--violet-soft);
+    }
+    .view-card b {
+      display: block;
+      margin-bottom: .35rem;
+      color: var(--violet);
+    }
+    .view-card span { font-size: .9rem; }
+
+    .fragment-flow {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
+      gap: .55rem;
+      align-items: stretch;
+      margin: 1.25rem 0;
+    }
+    .fragment {
+      padding: .9rem;
+      border: 1px solid var(--line);
+      border-top: 5px solid var(--teal);
+      border-radius: 12px;
+      background: var(--surface);
+    }
+    .fragment:nth-of-type(3) { border-top-color: var(--blue); }
+    .fragment:nth-of-type(5) { border-top-color: var(--violet); }
+    .fragment:nth-of-type(7) { border-top-color: var(--amber); }
+    .fragment b { display: block; color: var(--deep); }
+    .fragment small {
+      display: block;
+      margin-top: .45rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .edge {
+      display: grid;
+      place-items: center;
+      min-width: 3rem;
+      color: var(--amber);
+      font-weight: 800;
+      text-align: center;
+      font-size: .76rem;
+      line-height: 1.2;
+    }
+    .edge::after {
+      content: "→";
+      display: block;
+      font-size: 1.45rem;
+    }
+
+    details {
+      margin: .9rem 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+      overflow: hidden;
+    }
+    summary {
+      padding: .85rem 1rem;
+      cursor: pointer;
+      color: var(--deep);
+      background: var(--surface-2);
+      font-weight: 760;
+    }
+    details > div { padding: .2rem 1rem 1rem; }
+
+    footer {
+      padding: 2rem 1.2rem 4rem;
+      color: var(--muted);
+      text-align: center;
+      font-size: .85rem;
+    }
+
+    @media (min-width: 1460px) {
+      .sidebar { display: block; }
+      main { margin-left: 292px; }
+      .hero {
+        padding-left: max(2rem, calc((100vw - 292px - var(--content)) / 2));
+        padding-right: max(2rem, calc((100vw - 292px - var(--content)) / 2));
+      }
+      .hero::after {
+        right: max(2rem, calc((100vw - 292px - var(--content)) / 2));
+      }
+    }
+    @media (max-width: 980px) {
+      .hero-grid, .grid-3, .view-grid { grid-template-columns: 1fr; }
+      .grid-2 { grid-template-columns: 1fr; }
+      .phase-map { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .phase-map li:nth-child(4n)::after { content: "→"; }
+      .phase-map li:nth-child(2n)::after { content: ""; }
+      .contract { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .object-flow { grid-template-columns: 1fr; }
+      .fragment-flow { grid-template-columns: 1fr; }
+      .edge { min-height: 3rem; }
+      .edge::after {
+        content: "↓";
+        display: inline;
+        margin-left: .5rem;
+      }
+    }
+    @media (max-width: 620px) {
+      .phase-map, .contract { grid-template-columns: 1fr; }
+      .phase-map li::after,
+      .phase-map li:nth-child(4n)::after { content: ""; }
+      .stage-title { grid-template-columns: 1fr; }
+      .stage-no { width: 2.7rem; height: 2.7rem; }
+      .content { width: min(100% - 1rem, var(--content)); }
+      section { border-radius: 13px; }
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --ink: #dce8ef;
+        --muted: #a7b8c6;
+        --paper: #0d1720;
+        --surface: #15232d;
+        --surface-2: #1a3037;
+        --line: #344956;
+        --deep: #f0f6f8;
+        --deep-2: #d2e3ea;
+        --teal: #6fd0c5;
+        --teal-soft: #153c3a;
+        --amber: #efad69;
+        --amber-soft: #49311d;
+        --red: #ef8e83;
+        --red-soft: #472724;
+        --violet: #c4adea;
+        --violet-soft: #302944;
+        --blue: #8dbbd8;
+        --blue-soft: #233a4d;
+        --shadow: 0 18px 55px rgba(0, 0, 0, .24);
+      }
+      .hero::after { color: rgba(255, 255, 255, .025); }
+      .truth { background: rgba(21, 35, 45, .9); }
+      section { background: rgba(21, 35, 45, .96); }
+      code { background: rgba(255, 255, 255, .09); }
+    }
+    @media print {
+      body { background: #fff; color: #111; }
+      .sidebar, .skip-link { display: none; }
+      main { margin: 0; }
+      .hero, .content { width: 100%; padding-left: 0; padding-right: 0; }
+      section {
+        break-inside: avoid;
+        box-shadow: none;
+        background: #fff;
+      }
+      pre { white-space: pre-wrap; box-shadow: none; }
+      a { color: #111; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">跳到正文</a>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="side-brand">
+        <strong>Nereids SQL Workflow</strong>
+        <span>One query · Source-level walkthrough</span>
+      </div>
+      <nav aria-label="章节导航">
+        <a href="#map">先校正阶段地图</a>
+        <a href="#query">实验 SQL 与观察命令</a>
+        <a href="#entry">0. EXPLAIN 如何进入 Planner</a>
+        <a href="#parsed">1. PARSED PLAN</a>
+        <a href="#analyzed">2. ANALYZED PLAN</a>
+        <a href="#logical">3. LOGICAL PLAN</a>
+        <a href="#memo">4. MEMO PLAN 与搜索</a>
+        <a href="#chosen">5. 选择 PhysicalPlan</a>
+        <a href="#views">6. SHAPE / PHYSICAL 视图</a>
+        <a href="#distributed">7. DISTRIBUTED PLAN</a>
+        <a href="#whole-flow">端到端对象交接表</a>
+        <a href="#breakpoints">断点与源码索引</a>
+      </nav>
+      <div class="side-note">
+        源码核对：<code>d698a257526</code><br>
+        EXPLAIN 快照：<code>daf8eaa464c</code><br>
+        文档日期：<time datetime="2026-07-23">2026-07-23</time><br>
+        单文件 HTML，无外部资源。
+      </div>
+    </aside>
+
+    <main id="main-content">
+      <header class="hero">
+        <div class="eyebrow">Source-level SQL optimization workflow</div>
+        <h1>一条 SQL 穿过<br>Doris Nereids 优化器</h1>
+        <p class="lede">
+          不从类清单开始，而是固定一条三表 SQL，跟着它依次变成未绑定逻辑树、已分析逻辑树、
+          重写后的逻辑树、Memo 中的候选图、获胜的 PhysicalPlan，以及最终的 fragments、exchanges
+          和 worker instances。每一层都回答四件事：入口在哪里、对象变了什么、源码怎样继续、下一层拿到什么。
+        </p>
+        <div class="meta-row">
+          <span class="badge">同一条 SQL 贯穿全文</span>
+          <span class="badge">七种 PLAN 观察窗口</span>
+          <span class="badge">真实源码方法链</span>
+          <span class="badge">真实 EXPLAIN 快照</span>
+        </div>
+        <div class="hero-grid">
+          <div class="truth">
+            <b>七份输出不等于七次变换</b>
+            <span>SHAPE 与 PHYSICAL 是同一棵获胜 PhysicalPlan 的两种渲染，不是两个串行优化阶段。</span>
+          </div>
+          <div class="truth">
+            <b>LOGICAL 才是 CBO 的输入</b>
+            <span>PARSED 只保存语法骨架，ANALYZED 完成语义绑定，LOGICAL 完成 whole-tree rewrite 后才进入 Memo。</span>
+          </div>
+          <div class="truth">
+            <b>分布要求参与搜索</b>
+            <span>Broadcast、bucket shuffle、Gather 与 Sort 不是翻译时临时拍板；它们先作为 property/enforcer 进入 cost 比较。</span>
+          </div>
+        </div>
+      </header>
+
+      <div class="content">
+        <section id="map">
+          <p class="section-kicker">Read this first</p>
+          <h2>先把“处理阶段”和“观察视图”分开</h2>
+          <p class="section-intro">
+            一次普通查询的核心对象只沿下面的主链迁移。EXPLAIN 在不同边界提前返回或选择不同打印器，
+            因而让我们看到各层状态。本文不介绍 <code>LOGICAL PLAN PROCESS</code>、Nereids trace 或 DPHyp trace 等日志型输出。
+          </p>
+
+          <ol class="phase-map">
+            <li><strong>SQL / ExplainCommand</strong><small>parser 先得到命令 AST，再把内部 query plan 交给 NereidsPlanner。</small></li>
+            <li><strong>Parsed LogicalPlan</strong><small>UnboundRelation、UnboundSlot、SQL 原始 join 骨架。</small></li>
+            <li><strong>Analyzed LogicalPlan</strong><small>relation、slot、类型、ExprId 与语义约束已经绑定。</small></li>
+            <li><strong>Rewritten LogicalPlan</strong><small>谓词下推、列裁剪、join 归一化后，成为 CBO 输入。</small></li>
+            <li><strong>Memo DAG</strong><small>Group 保存等价结果，GroupExpression 保存候选关系表达式。</small></li>
+            <li><strong>Chosen PhysicalPlan</strong><small>按 required property 递归取出最低成本物理树，再做 post-process。</small></li>
+            <li class="view-phase"><strong>Shape / Physical views</strong><small>同一棵 PhysicalPlan 的紧凑视图和详细视图。</small></li>
+            <li><strong>DistributedPlan graph</strong><small>PhysicalDistribute 翻译成 Exchange/fragment，再分配 worker instances。</small></li>
+          </ol>
+
+          <div class="callout red">
+            <strong>最重要的源码事实：</strong>
+            <code>NereidsPlanner#getExplainString</code> 对 SHAPE 调用
+            <code>optimizedPlan.shape("")</code>，对 PHYSICAL 返回
+            <code>cost + optimizedPlan.treeString()</code>。它们共享同一个
+            <code>optimizedPlan</code> 字段。
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>SQL 写法</th>
+                  <th>内部 ExplainLevel</th>
+                  <th>观察对象</th>
+                  <th>该命令在哪里截断 / 打印</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>PARSED PLAN</code></td>
+                  <td><code>PARSED_PLAN</code></td>
+                  <td><code>parsedPlan.treeString()</code></td>
+                  <td>在 preprocess、锁表和 Analyzer 之前直接返回。</td>
+                </tr>
+                <tr>
+                  <td><code>ANALYZED PLAN</code></td>
+                  <td><code>ANALYZED_PLAN</code></td>
+                  <td><code>analyzedPlan.treeString()</code></td>
+                  <td>Analyzer 完成后、whole-tree Rewriter 之前返回。</td>
+                </tr>
+                <tr>
+                  <td><code>LOGICAL PLAN</code></td>
+                  <td><code>REWRITTEN_PLAN</code></td>
+                  <td><code>rewrittenPlan.treeString()</code></td>
+                  <td>Rewriter 与 pre-MV 尝试后、<code>optimize()</code> 前返回。</td>
+                </tr>
+                <tr>
+                  <td><code>MEMO PLAN</code></td>
+                  <td><code>MEMO_PLAN</code></td>
+                  <td><code>Memo.toString()</code> + optimized tree</td>
+                  <td>搜索和 copy-out 已完成；Memo 中已有 chosen/BEST 标记。</td>
+                </tr>
+                <tr>
+                  <td><code>SHAPE PLAN</code></td>
+                  <td><code>SHAPE_PLAN</code></td>
+                  <td><code>optimizedPlan.shape("")</code></td>
+                  <td>打印获胜物理树的稳定骨架。</td>
+                </tr>
+                <tr>
+                  <td><code>PHYSICAL PLAN</code></td>
+                  <td><code>OPTIMIZED_PLAN</code></td>
+                  <td>cost + <code>optimizedPlan.treeString()</code></td>
+                  <td>打印同一物理树的 stats、Group、property 与完整算子参数。</td>
+                </tr>
+                <tr>
+                  <td><code>DISTRIBUTED PLAN</code></td>
+                  <td><code>DISTRIBUTED_PLAN</code></td>
+                  <td><code>DistributedPlan.toString(...)</code></td>
+                  <td>PhysicalPlan 已翻译为 fragments，并完成 instance/worker 分配。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/commands/ExplainCommand.java">ExplainCommand.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/NereidsPlanner.java">NereidsPlanner.java</a>
+          </p>
+        </section>
+
+        <section id="query">
+          <p class="section-kicker">The single running example</p>
+          <h2>全文只跟这一条三表 SQL</h2>
+          <p class="section-intro">
+            查询使用 TPC-H 的 <code>customer</code>、<code>orders</code>、<code>lineitem</code>，
+            但刻意去掉聚合与 LIMIT，只保留三表连接、三个单表过滤、四列投影和 ORDER BY。
+            这样每次树变化都能在十五行左右的逻辑输出中看清。
+          </p>
+          <pre><code>SELECT
+    c.c_custkey,
+    o.o_orderkey,
+    l.l_linenumber,
+    o.o_orderdate
+FROM customer c
+JOIN orders o
+  ON c.c_custkey = o.o_custkey
+JOIN lineitem l
+  ON o.o_orderkey = l.l_orderkey
+WHERE c.c_mktsegment = 'BUILDING'
+  AND o.o_orderdate &lt; DATE '1995-03-15'
+  AND l.l_shipdate &gt; DATE '1995-03-15'
+ORDER BY o.o_orderdate, o.o_orderkey, l.l_linenumber;</code></pre>
+
+          <div class="grid-2">
+            <div class="card">
+              <h3>主线采用普通 Cascades</h3>
+              <p>
+                配套目录同时保存 Cascades 与显式 DPHyp 结果；本文固定使用
+                <code>cascades.txt</code>，即 <code>enable_dphyp_optimizer=false</code>。
+                DPHyp 会改变 join-order 分支，但不会改变 parser → analyzer → rewrite →
+                physical copy-out → distribute 这条外层流水线。
+              </p>
+            </div>
+            <div class="card">
+              <h3>不要固定易变 ID</h3>
+              <p>
+                文中的 PlanId、ExprId、GroupId、tablet/instance ID 和 cost 只用于解释本次快照。
+                稳定事实是对象类型、调用关系、property 语义和数据流，不是某个具体编号。
+              </p>
+            </div>
+          </div>
+
+          <h3>七个观察窗口</h3>
+          <pre><code>EXPLAIN PARSED PLAN      &lt;QUERY&gt;;
+EXPLAIN ANALYZED PLAN    &lt;QUERY&gt;;
+EXPLAIN LOGICAL PLAN     &lt;QUERY&gt;;
+EXPLAIN MEMO PLAN        &lt;QUERY&gt;;
+EXPLAIN SHAPE PLAN       &lt;QUERY&gt;;
+EXPLAIN PHYSICAL PLAN    &lt;QUERY&gt;;
+EXPLAIN DISTRIBUTED PLAN &lt;QUERY&gt;;</code></pre>
+          <p>
+            <a class="source" href="nereids-cascades-q3/query.sql">query.sql</a>
+            <a class="source" href="nereids-cascades-q3/README.md">快照目录说明</a>
+            <a class="source" href="nereids-cascades-framework-guide.html">Cascades 框架指南</a>
+          </p>
+        </section>
+
+        <section id="entry">
+          <div class="stage-title">
+            <span class="stage-no">00</span>
+            <div>
+              <h2>EXPLAIN 如何进入 NereidsPlanner</h2>
+              <p>先分清命令 AST 和被解释的查询树，后面才不会把 ExplainCommand 当成优化器输入。</p>
+            </div>
+          </div>
+
+          <div class="contract">
+            <div><b>入口</b><span><code>ConnectProcessor.executeQuery</code></span></div>
+            <div><b>命令对象</b><span><code>ExplainCommand</code></span></div>
+            <div><b>被解释对象</b><span>内部 <code>LogicalPlan</code></span></div>
+            <div><b>下一站</b><span><code>NereidsPlanner.plan</code></span></div>
+          </div>
+
+          <pre><code>ConnectProcessor.executeQuery
+└─ parseWithFallback
+   └─ NereidsParser.parseSQL
+      └─ LogicalPlanBuilder.withExplain
+         └─ ExplainCommand(level, logicalPlan)
+
+StmtExecutor.executeByNereids
+└─ ExplainCommand.run
+   ├─ logicalPlan.getExplainPlan()
+   ├─ new LogicalPlanAdapter(explainPlan)
+   ├─ adapter.setIsExplain(explainOptions)
+   └─ NereidsPlanner.plan(adapter, queryOptions)</code></pre>
+
+          <p>
+            parser 的顶层结果是 <code>ExplainCommand</code>；但
+            <code>ExplainCommand#run</code> 会先取内部 query 的
+            <code>getExplainPlan()</code>。普通查询在
+            <code>AbstractLogicalPlan#getExplainPlan</code> 中返回自身，因此交给 Planner 的根节点是
+            <code>UnboundResultSink</code>，不是 <code>ExplainCommand</code>。
+          </p>
+          <div class="callout">
+            <strong>阶段交接：</strong>
+            <code>LogicalPlanAdapter</code> 同时携带内部 query plan、StatementContext 和 ExplainOptions。
+            <code>NereidsPlanner#plan</code> 先保存 <code>parsedPlan</code>，再根据 ExplainLevel
+            决定提前返回还是继续走完整优化。
+          </div>
+          <p>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/qe/ConnectProcessor.java">ConnectProcessor.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/parser/NereidsParser.java">NereidsParser.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/parser/LogicalPlanBuilder.java">LogicalPlanBuilder.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/commands/ExplainCommand.java">ExplainCommand.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/glue/LogicalPlanAdapter.java">LogicalPlanAdapter.java</a>
+          </p>
+        </section>
+
+        <section id="parsed">
+          <div class="stage-title">
+            <span class="stage-no">01</span>
+            <div>
+              <h2>PARSED PLAN：SQL 先变成未绑定逻辑树</h2>
+              <p>这一层确认语法结构，不做 catalog 绑定，也不判断 join 算法、分布方式或成本。</p>
+            </div>
+          </div>
+
+          <div class="contract">
+            <div><b>输入</b><span>ANTLR parse tree</span></div>
+            <div><b>主构造器</b><span><code>LogicalPlanBuilder</code></span></div>
+            <div><b>核心状态</b><span>Unbound relation / slot</span></div>
+            <div><b>截断点</b><span><code>planWithLock</code> 直接 return</span></div>
+          </div>
+
+          <h3>builder 怎样还原 SQL 骨架</h3>
+          <pre><code>visitStatementDefault
+├─ plan(ctx.query)
+│  └─ visitQuery
+│     ├─ plan(ctx.queryTerm)
+│     │  └─ visitRegularQuerySpecification
+│     │     ├─ visitFromRelations
+│     │     │  └─ withRelations
+│     │     │     └─ withJoinRelations
+│     │     ├─ withFilter
+│     │     └─ withProjection
+│     └─ withQueryOrganization
+│        └─ withSort
+├─ new UnboundResultSink
+└─ withExplain</code></pre>
+
+          <h3>本 SQL 的 parsed tree</h3>
+          <pre><code>UnboundResultSink
+└─ LogicalSort('o_orderdate, 'o_orderkey, 'l_linenumber)
+   └─ LogicalProject('c_custkey, 'o_orderkey, ...)
+      └─ LogicalFilter(三个 WHERE 谓词仍在一个 AND 中)
+         └─ LogicalJoin(other=[o_orderkey = l_orderkey])
+            ├─ LogicalJoin(other=[c_custkey = o_custkey])
+            │  ├─ LogicalSubQueryAlias(c)
+            │  │  └─ LogicalCheckPolicy
+            │  │     └─ UnboundRelation(customer)
+            │  └─ LogicalSubQueryAlias(o)
+            │     └─ LogicalCheckPolicy
+            │        └─ UnboundRelation(orders)
+            └─ LogicalSubQueryAlias(l)
+               └─ LogicalCheckPolicy
+                  └─ UnboundRelation(lineitem)</code></pre>
+
+          <div class="grid-2">
+            <div class="card">
+              <h3>此时已经确定</h3>
+              <ul>
+                <li>FROM 中有三张关系，join 语法是左深树。</li>
+                <li>ON、WHERE、SELECT、ORDER BY 的表达式骨架完整。</li>
+                <li>表别名作用域已经用 wrapper 表示。</li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>此时仍未确定</h3>
+              <ul>
+                <li>表属于哪个 catalog/database，列引用是否合法。</li>
+                <li>slot 的类型、nullable、ExprId 与真实来源。</li>
+                <li>等值条件能否进入 hashJoinConjuncts。</li>
+                <li>join order、Hash/NLJ、broadcast/shuffle 与 cost。</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="callout warn">
+            <strong><code>LogicalSubQueryAlias</code> 不代表 SQL 子查询：</strong>
+            普通的 <code>customer c</code> 也会经过
+            <code>visitTableName → UnboundRelation → withCheckPolicy → withTableAlias</code>，
+            最后由 <code>LogicalSubQueryAlias</code> 承担关系别名作用域。
+          </div>
+
+          <p>
+            当 ExplainLevel 是 <code>PARSED_PLAN</code> 时，
+            <code>NereidsPlanner#planWithLock</code> 在 <code>preprocess()</code>、
+            <code>initCascadesContext()</code>、collect/lock table 与 Analyzer 之前直接返回。
+          </p>
+          <div class="callout">
+            <strong>交给下一阶段的对象：</strong>
+            一棵语法正确但仍含 <code>UnboundRelation</code>、<code>UnboundSlot</code> 的
+            <code>LogicalPlan</code>。Analyzer 的任务是让这棵树获得可验证的数据库语义。
+          </div>
+          <p>
+            <a class="source" href="nereids-cascades-q3/parsed/result.txt">parsed/result.txt</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/parser/LogicalPlanBuilder.java">LogicalPlanBuilder.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/logical/LogicalSubQueryAlias.java">LogicalSubQueryAlias.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/NereidsPlanner.java">NereidsPlanner.java</a>
+          </p>
+        </section>
+
+        <section id="analyzed">
+          <div class="stage-title">
+            <span class="stage-no">02</span>
+            <div>
+              <h2>ANALYZED PLAN：把名字绑定成有类型、有身份的对象</h2>
+              <p>Analyzer 解决“这条 SQL 到底在说什么”，而不是“怎样执行最便宜”。</p>
+            </div>
+          </div>
+
+          <div class="contract">
+            <div><b>输入</b><span>Unbound LogicalPlan</span></div>
+            <div><b>工作区</b><span><code>CascadesContext.rewritePlan</code></span></div>
+            <div><b>执行器</b><span><code>Analyzer</code> batch jobs</span></div>
+            <div><b>输出</b><span>Bound LogicalPlan</span></div>
+          </div>
+
+          <pre><code>NereidsPlanner.planWithLock
+├─ preprocess(plan)
+├─ initCascadesContext(plan, requiredProperties)
+├─ collectAndLockTable(...)
+└─ planWithoutLock
+   └─ analyze(...)
+      └─ CascadesContext.newAnalyzer().analyze()
+         └─ Analyzer.execute()
+            └─ AbstractBatchJobExecutor.execute()
+               └─ ANALYZE_JOBS</code></pre>
+
+          <h3>对本 SQL 最关键的一组 bottom-up rules</h3>
+          <div class="object-flow">
+            <div class="node">
+              <b>BindRelation</b>
+              <span>从 StatementContext/catalog 中取得真实表，把三个 UnboundRelation 变成 LogicalOlapScan。</span>
+            </div>
+            <div class="node">
+              <b>CheckPolicy</b>
+              <span>应用行级策略与数据掩码；本实验环境没有额外策略，所以 LogicalCheckPolicy wrapper 被消去。</span>
+            </div>
+            <div class="node">
+              <b>BindExpression</b>
+              <span>把 join/filter/project/sort/sink 中的未绑定表达式解析到 relation outputs，并完成函数与类型解析。</span>
+            </div>
+          </div>
+          <p class="tiny">
+            本例表列 Slot 的 ExprId 在 <code>LogicalCatalogRelation#computeOutput</code>
+            构造 catalog relation 输出时分配；<code>BindExpression</code> 复用这些带 ExprId 的 outputs
+            去解析上层表达式。
+          </p>
+
+          <h3>同一棵树现在长什么样</h3>
+          <pre><code>LogicalResultSink(output=[c_custkey#0, o_orderkey#8, ...])
+└─ LogicalSort(o_orderdate#12, o_orderkey#8, l_linenumber#20)
+   └─ LogicalProject(...)
+      └─ LogicalFilter(三个已绑定谓词)
+         └─ LogicalJoin(hash=[], other=[o_orderkey#8 = l_orderkey#17])
+            ├─ LogicalJoin(hash=[], other=[c_custkey#0 = o_custkey#9])
+            │  ├─ LogicalSubQueryAlias(c)
+            │  │  └─ LogicalOlapScan(internal.db.customer)
+            │  └─ LogicalSubQueryAlias(o)
+            │     └─ LogicalOlapScan(internal.db.orders)
+            └─ LogicalSubQueryAlias(l)
+               └─ LogicalOlapScan(internal.db.lineitem)</code></pre>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>观察点</th>
+                  <th>PARSED</th>
+                  <th>ANALYZED</th>
+                  <th>为什么重要</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>relation</td>
+                  <td><code>UnboundRelation(customer)</code></td>
+                  <td><code>LogicalOlapScan(internal.db.customer)</code></td>
+                  <td>已经拿到真实 schema、table/index 元数据。</td>
+                </tr>
+                <tr>
+                  <td>slot</td>
+                  <td><code>'o.o_orderkey</code></td>
+                  <td><code>o_orderkey#8</code></td>
+                  <td>同名列可以靠 ExprId 精确区分，类型与 nullable 已知。</td>
+                </tr>
+                <tr>
+                  <td>sink</td>
+                  <td><code>UnboundResultSink</code></td>
+                  <td><code>LogicalResultSink</code></td>
+                  <td>最终输出表达式已经绑定。</td>
+                </tr>
+                <tr>
+                  <td>join / filter</td>
+                  <td>未绑定表达式</td>
+                  <td>已绑定，但仍保留原始集中位置</td>
+                  <td>Analyzer 保证语义正确，不负责完成后续 normalization。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="callout warn">
+            <strong>不要提前宣称已经优化：</strong>
+            analyzed tree 的三个 WHERE 谓词仍集中在 join 上方，两个等值 ON 条件仍在
+            <code>otherJoinConjuncts</code>，alias wrapper 也仍存在。绑定完成不等于逻辑重写完成。
+          </div>
+          <div class="callout">
+            <strong>交给下一阶段的对象：</strong>
+            Analyzer 将新 root 写回 <code>CascadesContext.rewritePlan</code>。
+            <code>NereidsPlanner#planWithoutLock</code> 在这里保存
+            <code>analyzedPlan</code>；若不是 ANALYZED EXPLAIN，就继续调用 whole-tree Rewriter。
+          </div>
+          <p>
+            <a class="source" href="nereids-cascades-q3/analyzed/result.txt">analyzed/result.txt</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/executor/Analyzer.java">Analyzer.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/executor/AbstractBatchJobExecutor.java">AbstractBatchJobExecutor.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/analysis/BindRelation.java">BindRelation.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/analysis/BindExpression.java">BindExpression.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/analysis/CheckPolicy.java">CheckPolicy.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/logical/LogicalCatalogRelation.java">LogicalCatalogRelation.java</a>
+          </p>
+        </section>
+
+        <section id="logical">
+          <div class="stage-title">
+            <span class="stage-no">03</span>
+            <div>
+              <h2>LOGICAL PLAN：把已绑定树重写成 CBO 的规范输入</h2>
+              <p>SQL 语法结构不必是最适合搜索的结构；Rewriter 先做确定性、语义保持的树变换。</p>
+            </div>
+          </div>
+
+          <div class="contract">
+            <div><b>输入</b><span>Analyzed LogicalPlan</span></div>
+            <div><b>执行器</b><span><code>Rewriter</code></span></div>
+            <div><b>内部级别</b><span><code>REWRITTEN_PLAN</code></span></div>
+            <div><b>输出</b><span>Normalized LogicalPlan</span></div>
+          </div>
+
+          <pre><code>NereidsPlanner.planWithoutLock
+├─ analyze(...)
+├─ rewrite(...)
+│  └─ Rewriter.getWholeTreeRewriter(cascadesContext).execute()
+├─ preMaterializedViewRewrite()
+├─ rewrittenPlan = cascadesContext.getRewritePlan()
+└─ if REWRITTEN_PLAN: return rewrittenPlan
+
+// 只有继续规划时才进入
+└─ optimize(...)</code></pre>
+
+          <h3>本 SQL 在 whole-tree rewrite 中发生的四类变化</h3>
+          <div class="grid-2">
+            <div class="card">
+              <h3>1. alias wrapper 归一化</h3>
+              <p>
+                <code>LogicalSubQueryAliasToLogicalProject</code> 把 alias wrapper
+                改成 project，并把表别名写入 catalog relation。后续 project merge/pruning
+                继续清理只为别名服务的中间层。
+              </p>
+            </div>
+            <div class="card">
+              <h3>2. filter pushdown</h3>
+              <p>
+                原来位于两层 join 上方的三个谓词分别移动到 customer、orders、lineitem
+                分支，使 scan 上方尽早减少行数。
+              </p>
+            </div>
+            <div class="card">
+              <h3>3. hash condition 识别</h3>
+              <p>
+                <code>FindHashConditionForJoin</code> 把两个可用于等值 Hash Join 的 ON 条件
+                从 <code>otherJoinConjuncts</code> 移到 <code>hashJoinConjuncts</code>。
+              </p>
+            </div>
+            <div class="card">
+              <h3>4. 列裁剪与初始 join 方向</h3>
+              <p>
+                <code>ColumnPruning</code> 只保留向上游需要的列；
+                <code>ReorderJoin</code> 与 <code>InitJoinOrder</code> 可重建/交换 inner join，
+                本次结果成为 <code>lineitem ⋈ (orders ⋈ customer)</code>。
+              </p>
+            </div>
+          </div>
+
+          <h3>重写完成后的树</h3>
+          <pre><code>LogicalResultSink
+└─ LogicalSort
+   └─ LogicalProject(result columns)
+      └─ LogicalJoin(hash=[o_orderkey = l_orderkey])
+         ├─ Project(L_ORDERKEY, L_LINENUMBER)
+         │  └─ Filter(l_shipdate &gt; ...)
+         │     └─ OlapScan(lineitem, operativeCol=[...])
+         └─ Project(C_CUSTKEY, O_ORDERKEY, O_ORDERDATE)
+            └─ LogicalJoin(hash=[c_custkey = o_custkey])
+               ├─ Project(O_ORDERKEY, O_CUSTKEY, O_ORDERDATE)
+               │  └─ Filter(o_orderdate &lt; ...) → orders scan
+               └─ Project(C_CUSTKEY)
+                  └─ Filter(c_mktsegment = ...) → customer scan</code></pre>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>分支</th>
+                  <th>下推谓词</th>
+                  <th>向上保留的业务列</th>
+                  <th>scan operative columns</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>customer</td>
+                  <td><code>c_mktsegment = 'BUILDING'</code></td>
+                  <td><code>C_CUSTKEY</code></td>
+                  <td><code>C_CUSTKEY, C_MKTSEGMENT</code></td>
+                </tr>
+                <tr>
+                  <td>orders</td>
+                  <td><code>o_orderdate &lt; 1995-03-15</code></td>
+                  <td><code>O_ORDERKEY, O_CUSTKEY, O_ORDERDATE</code></td>
+                  <td>同左</td>
+                </tr>
+                <tr>
+                  <td>lineitem</td>
+                  <td><code>l_shipdate &gt; 1995-03-15</code></td>
+                  <td><code>L_ORDERKEY, L_LINENUMBER</code></td>
+                  <td><code>L_ORDERKEY, L_LINENUMBER, L_SHIPDATE</code></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="callout warn">
+            <strong>join 左右方向不是稳定 API：</strong>
+            当前快照确实展示 <code>lineitem ⋈ (orders ⋈ customer)</code>，但方向受统计与 session
+            状态影响。稳定结论是 rewrite 能 flatten/rebuild inner-join cluster，并能按估计交换 children，
+            不是某个固定表永远在左侧。
+          </div>
+          <div class="callout">
+            <strong>交给下一阶段的对象：</strong>
+            这棵 tree 仍然只有 <code>LogicalJoin</code>、<code>LogicalSort</code> 等“算什么”的节点，
+            没有 Hash Join implementation、distribution、enforcer 或 cost。
+            <code>NereidsPlanner#optimize</code> 会把它送入 Memo。
+          </div>
+          <p>
+            <a class="source" href="nereids-cascades-q3/logical/result.txt">logical/result.txt</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/executor/Rewriter.java">Rewriter.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/analysis/LogicalSubQueryAliasToLogicalProject.java">LogicalSubQueryAliasToLogicalProject.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/rewrite/PushDownFilterThroughJoin.java">PushDownFilterThroughJoin.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/rewrite/FindHashConditionForJoin.java">FindHashConditionForJoin.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/rewrite/ColumnPruning.java">ColumnPruning.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/rewrite/ReorderJoin.java">ReorderJoin.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/rewrite/InitJoinOrder.java">InitJoinOrder.java</a>
+          </p>
+        </section>
+
+        <section id="memo">
+          <div class="stage-title">
+            <span class="stage-no">04</span>
+            <div>
+              <h2>MEMO PLAN：从一棵逻辑树扩展成共享候选图</h2>
+              <p>这里同时发生等价变换、物理实现、统计派生、属性请求、成本比较与 enforcer 搜索。</p>
+            </div>
+          </div>
+
+          <div class="contract">
+            <div><b>输入</b><span>Rewritten LogicalPlan</span></div>
+            <div><b>搜索容器</b><span><code>Memo</code></span></div>
+            <div><b>调度单位</b><span><code>Job</code> / LIFO stack</span></div>
+            <div><b>最优解</b><span><code>Best(Group, Property)</code></span></div>
+          </div>
+
+          <h3>第一步：tree 进入 Memo</h3>
+          <pre><code>NereidsPlanner.optimize
+└─ new Optimizer(cascadesContext).execute()
+   └─ CascadesContext.toMemo()
+      └─ new Memo(connectContext, rewrittenPlan)
+         └─ Memo.init(plan)                  // 自底向上
+            ├─ child plan → child Group
+            ├─ replaceChildrenToGroupPlan
+            ├─ new GroupExpression(operator, childGroups)
+            └─ new Group(groupId, groupExpression, logicalProperties)</code></pre>
+
+          <div class="object-flow">
+            <div class="node">
+              <b>Memo</b>
+              <span>持有 root、所有 Groups、全局 GroupExpression 去重表；通过 copyIn 插入新候选。</span>
+            </div>
+            <div class="node">
+              <b>Group</b>
+              <span>一个逻辑等价结果；保存 logical/physical expressions、enforcers、statistics 与 lowestCostPlans。</span>
+            </div>
+            <div class="node">
+              <b>GroupExpression</b>
+              <span>一个 plan operator 加 child Group 引用；按 property 保存 cost、child requests 与输出属性。</span>
+            </div>
+          </div>
+
+          <div class="callout violet">
+            <strong>为什么 Memo 是 DAG：</strong>
+            多个候选可以复用同一个 child Group，不必各自复制完整子树。
+            Rule 负责保证新表达式语义等价；Memo 负责存储、去重、合并与复用，不会重新证明 SQL 等价性。
+          </div>
+
+          <h3>第二步：JobStack 驱动搜索</h3>
+          <pre><code>Optimizer.execute
+├─ DeriveStatsJob(root logical expressions)
+├─ SimpleJobScheduler.executeJobPool()
+└─ OptimizeGroupJob(root, required = GATHER)
+   ├─ OptimizeGroupExpressionJob(logical GroupExpression)
+   │  ├─ exploration rules
+   │  └─ implementation rules
+   │     └─ ApplyRuleJob
+   │        ├─ GroupExpressionMatching
+   │        ├─ Rule.transform
+   │        └─ Memo.copyIn(newPlan, ownerGroup, false)
+   └─ CostAndEnforcerJob(physical GroupExpression)</code></pre>
+
+          <p>
+            <code>SimpleJobScheduler</code> 不启动并行 task pool，而是不断从
+            <code>JobStack</code> 执行 <code>pop()</code>；所以实际是单线程 LIFO continuation。
+            <code>ApplyRuleJob</code> 产生 logical result 时会继续派生统计并探索，产生 physical result
+            时会进入 <code>CostAndEnforcerJob</code>。
+          </p>
+
+          <h3>第三步：这条 SQL 的搜索空间具体在比较什么</h3>
+          <div class="grid-3">
+            <div class="card">
+              <h3>逻辑等价候选</h3>
+              <p>
+                exploration rules 为 inner joins 生成合法的 commute/associate 等价结构。
+                Group 代表同一个关系结果，GroupExpression 代表不同求法。
+              </p>
+            </div>
+            <div class="card">
+              <h3>物理 implementation</h3>
+              <p>
+                <code>LogicalJoinToHashJoin</code> 生成 <code>PhysicalHashJoin</code>；
+                <code>LogicalSortToPhysicalQuickSort</code> 生成两阶段 sort 和 gather-sort 候选。
+              </p>
+            </div>
+            <div class="card">
+              <h3>属性与 enforcer</h3>
+              <p>
+                Hash Join 请求 broadcast 或左右 hash distribution；ORDER BY 请求 order + gather。
+                缺口由 <code>PhysicalDistribute</code> / sort enforcer 补齐并计入成本。
+              </p>
+            </div>
+          </div>
+
+          <h3>Stats、properties、cost 怎样汇合</h3>
+          <pre><code>CostAndEnforcerJob.execute
+├─ RequestPropertyDeriver.getRequestChildrenPropertyList
+├─ OptimizeGroupJob(child, childRequiredProperty)
+├─ CostCalculator.calculateCost(operator)
+├─ CostCalculator.addChildCost(...)
+├─ ChildrenPropertiesRegulator.adjustChildrenProperties
+├─ ChildOutputPropertyDeriver.getOutputProperties
+├─ recordPropertyAndCost
+│  ├─ GroupExpression.lowestCostTable
+│  └─ Group.lowestCostPlans
+└─ output 不满足 required property
+   └─ EnforceMissingPropertiesHelper.enforceProperty
+      ├─ sort / distribution enforcer
+      └─ enforcer cost + child cost → 再比较</code></pre>
+
+          <div class="callout red">
+            <strong>“一个 Group 一个 best plan”是错的：</strong>
+            正确状态是 <code>Best(G, P)</code>。同一个 orders/customer Group 在
+            <code>ANY</code>、<code>REPLICATED</code>、按 <code>o_orderkey</code> hash
+            等不同 required property 下可以有不同赢家。
+          </div>
+
+          <h3>从本次 Memo 看获胜决策</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>语义层</th>
+                  <th>主要候选</th>
+                  <th>本次获胜方案</th>
+                  <th>上层为什么需要它</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>orders ⋈ customer</td>
+                  <td>左右方向、不同 child distributions</td>
+                  <td>orders probe + replicated customer build</td>
+                  <td>customer 过滤后较小，broadcast network cost 可接受。</td>
+                </tr>
+                <tr>
+                  <td>lineitem ⋈ 上述子树</td>
+                  <td>左右方向、broadcast/hash/bucketed requests</td>
+                  <td>lineitem probe + orders 子树按 orderkey STORAGE_BUCKETED</td>
+                  <td>与 lineitem 的 bucket layout 对齐。</td>
+                </tr>
+                <tr>
+                  <td>ORDER BY</td>
+                  <td>GATHER_SORT；LOCAL_SORT + GATHER + MERGE_SORT</td>
+                  <td>两阶段 sort</td>
+                  <td>先局部排序，再汇聚并归并有序流。</td>
+                </tr>
+                <tr>
+                  <td>root result</td>
+                  <td>root property entries</td>
+                  <td>GATHER 下的最低成本 ResultSink 路径</td>
+                  <td>结果需要返回单个 MySQL client。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="callout warn">
+            <strong>MEMO PLAN 是“搜索完成后的 Memo”：</strong>
+            输出已经含 <code>Chosen Expression</code>、<code>BEST</code> 和 chosen properties，
+            末尾还追加 optimized physical tree。它不是 copy-out 之前、尚未选赢家的原始中间快照。
+          </div>
+          <div class="callout">
+            <strong>交给下一阶段的状态：</strong>
+            root Group 已经在要求的 <code>GATHER</code> property 下保存最低成本入口；
+            每个获胜 GroupExpression 也记录了 children 所需 properties。Planner 可以沿这些指针递归 copy-out。
+          </div>
+          <p>
+            <a class="source" href="nereids-cascades-q3/memo/cascades.txt">memo/cascades.txt</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/executor/Optimizer.java">Optimizer.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/CascadesContext.java">CascadesContext.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/memo/Memo.java">Memo.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/memo/Group.java">Group.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/memo/GroupExpression.java">GroupExpression.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/scheduler/SimpleJobScheduler.java">SimpleJobScheduler.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/OptimizeGroupJob.java">OptimizeGroupJob.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/OptimizeGroupExpressionJob.java">OptimizeGroupExpressionJob.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/ApplyRuleJob.java">ApplyRuleJob.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/DeriveStatsJob.java">DeriveStatsJob.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/CostAndEnforcerJob.java">CostAndEnforcerJob.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/EnforceMissingPropertiesHelper.java">EnforceMissingPropertiesHelper.java</a>
+          </p>
+        </section>
+
+        <section id="chosen">
+          <div class="stage-title">
+            <span class="stage-no">05</span>
+            <div>
+              <h2>从 Memo 递归取出获胜 PhysicalPlan</h2>
+              <p>Memo 保存的是共享图；执行层需要的是一棵具体树，所以 Planner 必须按 property 递归 copy-out。</p>
+            </div>
+          </div>
+
+          <div class="contract">
+            <div><b>起点</b><span>root Group + GATHER</span></div>
+            <div><b>选择表</b><span><code>lowestCostPlans</code></span></div>
+            <div><b>产物</b><span><code>PhysicalPlan</code> tree</span></div>
+            <div><b>尾处理</b><span><code>PlanPostProcessors</code></span></div>
+          </div>
+
+          <pre><code>NereidsPlanner.chooseNthPlan(root, GATHER, nth)
+└─ chooseBestPlan(root, GATHER, cascadesContext)
+   ├─ Group.getLowestCostPlan(requiredProperty)
+   ├─ 标记 chosen expression / property / enforcer
+   ├─ GroupExpression.getInputPropertiesList(requiredProperty)
+   ├─ 对每个 child Group 递归 chooseBestPlan
+   ├─ groupExpression.getPlan().withChildren(chosenChildren)
+   ├─ withGroupExpression(...)
+   └─ withPhysicalPropertiesAndStats(...)
+└─ NereidsPlanner.postProcess
+   └─ PlanPostProcessors.process(physicalPlan)</code></pre>
+
+          <p>
+            每一层都必须携带 required property：父节点用获胜 GroupExpression 记录的
+            <code>ChildrenRequires</code> 决定如何递归选择孩子。若获胜入口是 enforcer，
+            copy-out 先得到 enforcer，再按它的 child property 回到同一个 owner Group
+            取出被强制前的最佳子计划。
+          </p>
+
+          <div class="callout warn">
+            <strong>runtime filter 的时机：</strong>
+            <code>PlanPostProcessors</code> 在 copy-out 后生成/裁剪 runtime filters。
+            因此 PHYSICAL 输出中的 <code>RF0..RF3</code> 属于最终物理树后处理结果，
+            不是 Memo 中 join-order/cost 搜索的原始输入。
+          </div>
+
+          <h3>本 SQL copy-out 后的物理骨架</h3>
+          <pre><code>PhysicalResultSink
+└─ PhysicalQuickSort[MERGE_SORT]
+   └─ PhysicalDistribute[GATHER]
+      └─ PhysicalQuickSort[LOCAL_SORT]
+         └─ PhysicalProject
+            └─ PhysicalHashJoin(lineitem ⋈ orders/customer, bucket shuffle)
+               ├─ lineitem scan → filter → project
+               └─ PhysicalDistribute[STORAGE_BUCKETED(o_orderkey)]
+                  └─ PhysicalHashJoin(orders ⋈ customer, broadcast)
+                     ├─ orders scan → filter → project
+                     └─ PhysicalDistribute[REPLICATED]
+                        └─ customer scan → filter → project</code></pre>
+
+          <div class="callout">
+            <strong>交给下一阶段的对象：</strong>
+            一棵已经带有 physical properties、statistics、GroupExpression 引用和 runtime filters
+            的 <code>PhysicalPlan</code>。SHAPE 与 PHYSICAL 只观察它；DISTRIBUTED 才继续改变表示。
+          </div>
+          <p>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/NereidsPlanner.java">NereidsPlanner.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/processor/post/PlanPostProcessors.java">PlanPostProcessors.java</a>
+          </p>
+        </section>
+
+        <section id="views">
+          <div class="stage-title">
+            <span class="stage-no">06</span>
+            <div>
+              <h2>SHAPE 与 PHYSICAL：同一赢家的两种观察方式</h2>
+              <p>它们不是新的优化 pass；差别只是打印时保留多少信息。</p>
+            </div>
+          </div>
+
+          <div class="view-grid">
+            <div class="view-card">
+              <b>MEMO PLAN</b>
+              <span>
+                回答“还有哪些候选、每个 required property 谁最便宜、赢家要求孩子提供什么”。
+                适合解释 why。
+              </span>
+            </div>
+            <div class="view-card">
+              <b>SHAPE PLAN</b>
+              <span>
+                调用 <code>optimizedPlan.shape("")</code>，隐去易变 ID、stats 与大部分属性细节。
+                适合先确认 what。
+              </span>
+            </div>
+            <div class="view-card">
+              <b>PHYSICAL PLAN</b>
+              <span>
+                返回 scalar cost + <code>optimizedPlan.treeString()</code>，展示 explicit distribute、
+                Group、stats 与 RF。适合把 what 回查到 why。
+              </span>
+            </div>
+          </div>
+
+          <h3>这条 SQL 的 SHAPE 一眼告诉你什么</h3>
+          <pre><code>PhysicalQuickSort[MERGE_SORT]
+--PhysicalDistribute[DistributionSpecGather]
+----PhysicalQuickSort[LOCAL_SORT]
+------hashJoin[INNER_JOIN bucketShuffle]
+        ... lineitem
+        ... hashJoin[INNER_JOIN broadcast]
+              ... orders
+              ... customer</code></pre>
+          <ul>
+            <li>join tree 是 <code>lineitem ⋈ (orders ⋈ customer)</code>；</li>
+            <li>内层 join 广播 customer，外层 join 采用 bucket shuffle；</li>
+            <li>ORDER BY 使用 LOCAL_SORT → GATHER → MERGE_SORT。</li>
+          </ul>
+
+          <h3>PHYSICAL 再补上哪些证据</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>细节</th>
+                  <th>示例</th>
+                  <th>回查用途</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Memo owner</td>
+                  <td><code>PhysicalHashJoin@11</code></td>
+                  <td>回到 Memo 中相应 Group，看它击败了哪些候选。</td>
+                </tr>
+                <tr>
+                  <td>statistics</td>
+                  <td>scan/filter/join 的估算行数</td>
+                  <td>解释 cost 输入，不等于运行时实际行数。</td>
+                </tr>
+                <tr>
+                  <td>distribution</td>
+                  <td><code>REPLICATED</code>、<code>STORAGE_BUCKETED</code>、<code>GATHER</code></td>
+                  <td>解释为何稍后会产生三个 Exchange 边界。</td>
+                </tr>
+                <tr>
+                  <td>runtime filters</td>
+                  <td><code>RF0..RF3</code></td>
+                  <td>确认 post-process 给最终 Hash Join/Scan 建立的过滤通道。</td>
+                </tr>
+                <tr>
+                  <td>scalar cost</td>
+                  <td><code>1658520.324...</code></td>
+                  <td>候选排序标尺，不是毫秒预测。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout violet">
+            <strong>推荐阅读顺序：</strong>
+            先用 SHAPE 确认稳定骨架，再用 PHYSICAL 找 Group/property/stats，
+            最后回到 MEMO 查 loser candidates 与 <code>ChildrenRequires</code>。
+            不要把三份大输出都从第一行顺读到底。
+          </div>
+          <p>
+            <a class="source" href="nereids-cascades-q3/shape/cascades.txt">shape/cascades.txt</a>
+            <a class="source" href="nereids-cascades-q3/physical/cascades.txt">physical/cascades.txt</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/Plan.java">Plan.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/AbstractPlan.java">AbstractPlan.java</a>
+          </p>
+        </section>
+
+        <section id="distributed">
+          <div class="stage-title">
+            <span class="stage-no">07</span>
+            <div>
+              <h2>DISTRIBUTED PLAN：把 PhysicalPlan 变成可提交的 fragment graph</h2>
+              <p>这一层第一次离开 Nereids PhysicalPlan IR，进入执行层 PlanNode/PlanFragment 和 worker instance。</p>
+            </div>
+          </div>
+
+          <div class="contract">
+            <div><b>输入</b><span>Nereids PhysicalPlan tree</span></div>
+            <div><b>翻译器</b><span><code>PhysicalPlanTranslator</code></span></div>
+            <div><b>切分边界</b><span><code>PhysicalDistribute</code></span></div>
+            <div><b>输出</b><span><code>PipelineDistributedPlan</code> graph</span></div>
+          </div>
+
+          <h3>先翻译和切分 fragments</h3>
+          <pre><code>NereidsPlanner.distribute(physicalPlan, explainLevel)
+├─ splitFragments(physicalPlan)
+│  ├─ new PlanTranslatorContext(...)
+│  └─ PhysicalPlanTranslator.translatePlan(physicalPlan)
+│     ├─ PhysicalOlapScan  → OlapScanNode
+│     ├─ PhysicalHashJoin  → HashJoinNode
+│     ├─ PhysicalQuickSort → SortNode / merge Exchange metadata
+│     ├─ PhysicalResultSink → ResultSink
+│     └─ PhysicalDistribute
+│        └─ visitPhysicalDistribute
+│           ├─ ExchangeNode
+│           ├─ new downstream PlanFragment
+│           └─ upstream DataStreamSink + output partition
+└─ doDistribute(...)
+   └─ new DistributePlanner(...).plan()</code></pre>
+
+          <p>
+            <code>visitPhysicalDistribute</code> 把 CBO 中的 property enforcer 变成执行图边界：
+            upstream fragment 通过 <code>DataStreamSink</code> 发送数据，downstream fragment
+            以 <code>ExchangeNode</code> 接收。没有 Exchange 边界的 scan/filter/project/join
+            会继续留在同一个 fragment 内。
+          </p>
+
+          <h3>本 SQL 的三个 PhysicalDistribute 变成四个 fragments</h3>
+          <div class="fragment-flow">
+            <div class="fragment">
+              <b>Fragment 3 · customer</b>
+              <small>scan + segment filter<br>发送 replicated customer</small>
+            </div>
+            <div class="edge">Exchange 1<br>broadcast</div>
+            <div class="fragment">
+              <b>Fragment 2 · orders</b>
+              <small>orders scan<br>orders ⋈ customer Hash Join</small>
+            </div>
+            <div class="edge">Exchange 4<br>bucket shuffle</div>
+            <div class="fragment">
+              <b>Fragment 1 · lineitem</b>
+              <small>lineitem scan<br>外层 Hash Join + LOCAL_SORT</small>
+            </div>
+            <div class="edge">Exchange 8<br>gather + merge</div>
+            <div class="fragment">
+              <b>Fragment 0 · result</b>
+              <small>VMERGING-EXCHANGE<br>ResultSink → MySQL client</small>
+            </div>
+          </div>
+          <p class="tiny">
+            这里的 0–3 沿用本次 <code>DistributedPlan.toString(...)</code> 输出的展示编号；
+            它们是打印时按 root-to-leaf 顺序分配的 display ID，不是稳定的内部
+            <code>PlanFragmentId</code>。
+          </p>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nereids PhysicalPlan</th>
+                  <th>Translator 产物</th>
+                  <th>本 SQL 中的表现</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>DistributionSpecReplicated</code></td>
+                  <td>UNPARTITIONED sender + Exchange</td>
+                  <td>customer 从 fragment 3 广播到 fragment 2。</td>
+                </tr>
+                <tr>
+                  <td><code>DistributionSpecHash(STORAGE_BUCKETED)</code></td>
+                  <td>BUCKET_SHUFFLE_HASH_PARTITIONED</td>
+                  <td>orders/customer 子树按 o_orderkey 发送到 fragment 1。</td>
+                </tr>
+                <tr>
+                  <td><code>DistributionSpecGather</code></td>
+                  <td>UNPARTITIONED + Exchange</td>
+                  <td>fragment 1 的局部有序流汇聚到 fragment 0。</td>
+                </tr>
+                <tr>
+                  <td><code>PhysicalQuickSort[MERGE_SORT]</code></td>
+                  <td>Exchange merge-sort metadata</td>
+                  <td>根端打印为 <code>VMERGING-EXCHANGE</code>。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>DistributePlanner 再把 fragments 绑定到 workers</h3>
+          <pre><code>DistributePlanner.plan
+├─ BackendDistributedPlanWorkerManager
+├─ LoadBalanceScanWorkerSelector
+├─ UnassignedJobBuilder.buildJobs(fragments)
+├─ AssignedJobBuilder.buildJobs(unassignedJobs)
+│  └─ instanceId + worker + scanSource
+├─ buildDistributePlans(...)
+│  └─ PipelineDistributedPlan per fragment
+└─ linkPlans(...)
+   └─ sender sink ↔ receiver Exchange ↔ destination instances</code></pre>
+
+          <p>
+            本次教学环境设置 <code>parallel_pipeline_task_num=1</code> 且只有一个 BE，
+            所以四个 fragment 各展示一个 instance，并全部落到同一 BackendWorker。
+            这是采样环境事实，不是分布式规划器保证的固定形状。
+          </p>
+
+          <div class="callout red">
+            <strong>看到 <code>PlanNode</code> 不等于回退旧优化器：</strong>
+            <code>PhysicalPlanTranslator</code> 将已经选好的 Nereids PhysicalPlan 翻译为
+            <code>org.apache.doris.planner.PlanNode</code>、<code>PlanFragment</code> 和
+            <code>org.apache.doris.analysis.Expr</code>，是复用 FE/BE 执行协议的边界，
+            不是再次调用一套旧优化器。
+          </div>
+
+          <h3>优化器边界之外：怎样提交到 BE</h3>
+          <pre><code>StmtExecutor.executeAndSendResult
+└─ NereidsCoordinator.exec
+   ├─ ThriftPlansBuilder.plansToThrift
+   │  ├─ PlanFragment.toThrift
+   │  └─ instance / scan source thrift
+   └─ PipelineExecutionTask.execute
+      └─ MultiFragmentsPipelineTask.sendPhaseOneRpc
+         └─ BackendServiceProxy.execPlanFragmentsAsync</code></pre>
+          <p class="tiny">
+            这段只标出 optimizer 产物的去向；BE pipeline 如何创建 operator、调度 task 和执行数据流，
+            已经属于执行引擎 workflow，不在本文展开。
+          </p>
+
+          <div class="callout">
+            <strong>最终产物：</strong>
+            <code>DISTRIBUTED PLAN</code> 同时展示 fragment 内的执行 PlanNode 树、
+            fragment 之间的 Exchange 链、每个 fragment 的 unassigned/assigned job，
+            以及具体 worker/instance/scan ranges。至此，一条 SQL 完成从语义树到可下发执行图的转换。
+          </div>
+          <p>
+            <a class="source" href="nereids-cascades-q3/distributed/cascades.txt">distributed/cascades.txt</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/glue/translator/PhysicalPlanTranslator.java">PhysicalPlanTranslator.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/planner/PlanFragment.java">PlanFragment.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/distribute/DistributePlanner.java">DistributePlanner.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/distribute/PipelineDistributedPlan.java">PipelineDistributedPlan.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/qe/NereidsCoordinator.java">NereidsCoordinator.java</a>
+          </p>
+        </section>
+
+        <section id="whole-flow">
+          <p class="section-kicker">End-to-end handoff</p>
+          <h2>把整条 workflow 压缩成一张对象交接表</h2>
+          <p class="section-intro">
+            调试时先问“当前手里是什么对象”，再决定看哪种 EXPLAIN、在哪个方法下断点。
+            这比从某条 rule 名逆向猜完整流水线可靠得多。
+          </p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>阶段</th>
+                  <th>主对象</th>
+                  <th>本 SQL 的可见变化</th>
+                  <th>阶段完成条件</th>
+                  <th>观察窗口</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>parse</td>
+                  <td>Unbound LogicalPlan tree</td>
+                  <td>三表、两层 join、集中 filter、projection、sort 被还原。</td>
+                  <td>语法树完整，可进入语义分析。</td>
+                  <td>PARSED</td>
+                </tr>
+                <tr>
+                  <td>analyze</td>
+                  <td>Bound LogicalPlan tree</td>
+                  <td>Relation → OlapScan；slot 获得 ExprId/type；sink 绑定。</td>
+                  <td>所有 relation/expression 具有明确数据库语义。</td>
+                  <td>ANALYZED</td>
+                </tr>
+                <tr>
+                  <td>rewrite</td>
+                  <td>Normalized LogicalPlan tree</td>
+                  <td>filter 下推、列裁剪、hash condition 识别、join 重建。</td>
+                  <td>得到适合 Memo 搜索的逻辑输入。</td>
+                  <td>LOGICAL</td>
+                </tr>
+                <tr>
+                  <td>memo init + search</td>
+                  <td>Memo / Group / GroupExpression</td>
+                  <td>join alternatives、Hash Join、sort alternatives、properties/enforcers 被共同计价。</td>
+                  <td>root 的 required property 有最低成本入口。</td>
+                  <td>MEMO</td>
+                </tr>
+                <tr>
+                  <td>copy-out + post-process</td>
+                  <td>Chosen PhysicalPlan tree</td>
+                  <td>broadcast customer、bucket-shuffle outer join、两阶段 sort、runtime filters。</td>
+                  <td>一棵带 stats/properties 的完整物理树。</td>
+                  <td>SHAPE / PHYSICAL</td>
+                </tr>
+                <tr>
+                  <td>translate + distribute</td>
+                  <td>PlanFragment + PipelineDistributedPlan graph</td>
+                  <td>3 个 PhysicalDistribute → 3 个 Exchange → 4 个 fragments，并分配 instances。</td>
+                  <td>每个 worker 都有可序列化、可提交的 fragment instances。</td>
+                  <td>DISTRIBUTED</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>一行源码调用链</h3>
+          <pre><code>ConnectProcessor
+→ NereidsParser / LogicalPlanBuilder
+→ ExplainCommand
+→ NereidsPlanner.plan
+→ Analyzer
+→ Rewriter
+→ Optimizer
+→ CascadesContext.toMemo
+→ Memo + Cascades Jobs
+→ chooseBestPlan
+→ PlanPostProcessors
+→ PhysicalPlanTranslator
+→ DistributePlanner
+→ NereidsCoordinator</code></pre>
+        </section>
+
+        <section id="breakpoints">
+          <p class="section-kicker">Source reading route</p>
+          <h2>沿同一条 SQL 下断点，而不是漫游包目录</h2>
+          <p class="section-intro">
+            建议第一次只跟普通 Cascades 路径。每到一个断点，先记录当前 root 类型、
+            CascadesContext 中的 plan/memo 状态、required property，再继续。
+          </p>
+
+          <div class="grid-2">
+            <div class="card">
+              <h3>语义树阶段</h3>
+              <pre><code>1. LogicalPlanBuilder#withExplain
+2. ExplainCommand#run
+3. NereidsPlanner#planWithLock
+4. NereidsPlanner#analyze
+5. Analyzer#execute
+6. NereidsPlanner#rewrite
+7. Rewriter#execute</code></pre>
+            </div>
+            <div class="card">
+              <h3>Memo 与物理选择</h3>
+              <pre><code>8. CascadesContext#toMemo
+9. Memo#init / copyIn
+10. OptimizeGroupJob#execute
+11. ApplyRuleJob#execute
+12. DeriveStatsJob#execute
+13. CostAndEnforcerJob#execute
+14. EnforceMissingPropertiesHelper#enforceProperty
+15. NereidsPlanner#chooseBestPlan</code></pre>
+            </div>
+          </div>
+          <div class="grid-2">
+            <div class="card">
+              <h3>翻译与分布</h3>
+              <pre><code>16. PhysicalPlanTranslator#translatePlan
+17. PhysicalPlanTranslator#visitPhysicalDistribute
+18. PhysicalPlanTranslator#visitPhysicalHashJoin
+19. DistributePlanner#plan
+20. AssignedJobBuilder#buildJobs
+21. NereidsCoordinator#exec</code></pre>
+            </div>
+            <div class="card">
+              <h3>每一站固定检查</h3>
+              <ol>
+                <li>root 的 Java 类型与 children。</li>
+                <li>plan 是 tree，还是 Group 引用构成的 DAG。</li>
+                <li>当前 required/output/child property。</li>
+                <li>统计和 cost 写在 Group 还是 GroupExpression。</li>
+                <li>下一次表示变化在哪里发生。</li>
+              </ol>
+            </div>
+          </div>
+
+          <details open>
+            <summary>入口、Parser、Analyzer、Rewriter</summary>
+            <div>
+              <p>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/qe/ConnectProcessor.java">ConnectProcessor.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/qe/StmtExecutor.java">StmtExecutor.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/parser/NereidsParser.java">NereidsParser.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/parser/LogicalPlanBuilder.java">LogicalPlanBuilder.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/commands/ExplainCommand.java">ExplainCommand.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/NereidsPlanner.java">NereidsPlanner.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/executor/Analyzer.java">Analyzer.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/executor/Rewriter.java">Rewriter.java</a>
+              </p>
+            </div>
+          </details>
+
+          <details open>
+            <summary>Memo、Jobs、Stats、Properties、Cost</summary>
+            <div>
+              <p>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/executor/Optimizer.java">Optimizer.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/CascadesContext.java">CascadesContext.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/memo/Memo.java">Memo.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/memo/Group.java">Group.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/memo/GroupExpression.java">GroupExpression.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/OptimizeGroupJob.java">OptimizeGroupJob.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/ApplyRuleJob.java">ApplyRuleJob.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/DeriveStatsJob.java">DeriveStatsJob.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/CostAndEnforcerJob.java">CostAndEnforcerJob.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/stats/StatsCalculator.java">StatsCalculator.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/cost/CostCalculator.java">CostCalculator.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/RequestPropertyDeriver.java">RequestPropertyDeriver.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/EnforceMissingPropertiesHelper.java">EnforceMissingPropertiesHelper.java</a>
+              </p>
+            </div>
+          </details>
+
+          <details open>
+            <summary>PhysicalPlan、Translator、Fragments、Workers</summary>
+            <div>
+              <p>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/processor/post/PlanPostProcessors.java">PlanPostProcessors.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/glue/translator/PhysicalPlanTranslator.java">PhysicalPlanTranslator.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/planner/PlanNode.java">PlanNode.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/planner/PlanFragment.java">PlanFragment.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/distribute/DistributePlanner.java">DistributePlanner.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/distribute/worker/job/UnassignedJobBuilder.java">UnassignedJobBuilder.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/distribute/worker/job/AssignedJobBuilder.java">AssignedJobBuilder.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/qe/NereidsCoordinator.java">NereidsCoordinator.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/qe/runtime/ThriftPlansBuilder.java">ThriftPlansBuilder.java</a>
+              </p>
+            </div>
+          </details>
+
+          <details>
+            <summary>本文使用的完整原始结果</summary>
+            <div>
+              <p>
+                <a class="source" href="nereids-cascades-q3/parsed/result.txt">PARSED</a>
+                <a class="source" href="nereids-cascades-q3/analyzed/result.txt">ANALYZED</a>
+                <a class="source" href="nereids-cascades-q3/logical/result.txt">LOGICAL</a>
+                <a class="source" href="nereids-cascades-q3/memo/cascades.txt">MEMO</a>
+                <a class="source" href="nereids-cascades-q3/shape/cascades.txt">SHAPE</a>
+                <a class="source" href="nereids-cascades-q3/physical/cascades.txt">PHYSICAL</a>
+                <a class="source" href="nereids-cascades-q3/distributed/cascades.txt">DISTRIBUTED</a>
+                <a class="source" href="nereids-cascades-q3/manifest.tsv">manifest.tsv</a>
+              </p>
+            </div>
+          </details>
+
+          <div class="callout">
+            <strong>源码与快照基线：</strong>
+            方法链已在当前 HEAD <code>d698a25752663153b34ead2dfe58f58d982b99c6</code> 核对。
+            配套 EXPLAIN 采自其祖先 <code>daf8eaa464c</code>；本文涉及的 parser/planner/analyzer/rewriter
+            主链文件在两者之间没有变化。计划编号、统计与分布实例仍只代表采样环境。
+          </div>
+        </section>
+      </div>
+
+      <footer>
+        Apache Doris Nereids · Source-level SQL optimization workflow ·
+        <time datetime="2026-07-23">2026-07-23</time>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
