@@ -650,7 +650,7 @@
       <div class="side-note">
         源码核对：<code>d698a257526</code><br>
         EXPLAIN 快照：<code>daf8eaa464c</code><br>
-        文档日期：<time datetime="2026-07-24">2026-07-24</time><br>
+        文档日期：<time datetime="2026-07-25">2026-07-25</time><br>
         单文件 HTML，无外部资源。
       </div>
     </aside>
@@ -1081,109 +1081,479 @@ finalize logical properties;</code></pre>
             <code>cascadesContext.getRewritePlan()</code> 仍指向主 RBO tree。
           </div>
 
-          <h3>第 2 层 C：<code>Optimizer.execute</code> 只剩 Memo 初始化、统计与 root 搜索</h3>
-          <pre><code>Memo optimize(
-        LogicalPlan rewritten,
-        List&lt;LogicalPlan&gt; alternatives,
-        PhysicalProperties required) {
-    Memo memo = new Memo(rewritten);       // Memo.init 递归建初始 Groups
-    copyAlternativesIntoRoot(memo, alternatives);
+          <h3>第 2 层 C：<code>Optimizer.execute</code> 是两次 JobStack drain</h3>
+          <p>
+            把 <code>Optimizer.execute()</code> 压成“建 Memo → deriveStats(root) →
+            optimizeGroup(root)”会丢掉最重要的实现事实：统计派生与 Cascades 搜索都是
+            <code>Job</code>，由同一个单线程 LIFO <code>JobStack</code> 调度，但分成两次
+            <code>executeJobPool()</code> 完整排空。
+          </p>
+          <pre><code>void Optimizer.execute() {
+    Plan rewritten = context.getRewritePlan();
 
-    deriveStats(memo.getRoot());
-    optimizeGroup(memo.getRoot(), required);
-    return memo;
+    // 条件分支：本 SQL 没有 CTE，因此没有改变 rewritten
+    normalizeCteIfPresent(rewritten);
+    Plan inlinedCteAlternative = generateCteInlineAlternative();
+
+    context.toMemo();                       // tree → initial Memo DAG
+    copyIntoRootIfPresent(inlinedCteAlternative);
+
+    // drain #1：先让初始 Memo 的统计自底向上完整可用
+    for (GroupExpression rootExpr
+            : memo.root().logicalExpressions()) {
+        push(new DeriveStatsJob(rootExpr, rootJobContext));
+    }
+    scheduler.executeJobPool(context);
+
+    // 条件分支：本快照 enable_dphyp_optimizer=false，不运行 JoinOrderJob
+    maybeRunDpHypAndRebuildMemo();
+
+    // drain #2：从 Best(ROOT, GATHER) 这个目标开始搜索
+    push(new OptimizeGroupJob(memo.root(), rootJobContext));
+    scheduler.executeJobPool(context);
 }</code></pre>
 
+          <div class="grid-2">
+            <div class="card">
+              <h4>drain #1 交付什么</h4>
+              <p>
+                初始 logical GroupExpression 都带有可供 cost model 使用的
+                <code>Statistics</code>。本文从三个 scan 开始，依次得到 filter、project、
+                两层 join、sort 和 sink 的行数与列统计。
+              </p>
+            </div>
+            <div class="card">
+              <h4>drain #2 交付什么</h4>
+              <p>
+                Memo 中产生 logical alternatives、physical implementations、enforcers，
+                并填好每个 <code>Best(Group, requiredProperty)</code>。它仍不 copy-out
+                PhysicalPlan tree；那是后面的 <code>chooseBestPlan</code>。
+              </p>
+            </div>
+          </div>
+
           <p>
-            当前路径没有 CTE，也固定使用普通 Cascades，所以
-            <code>Optimizer.execute()</code> 中的 CTE inline alternative 与 DPHyp 分支可以从主线拿掉。
-            初始 rewritten tree 进入 Memo 后，每个节点先对应一个 Group；新规则结果通过
-            <code>Memo.copyIn</code> 加入等价 Group，公共 child Group 因而可以被多个候选共享。
+            当前 SQL 没有 CTE，且固定走普通 Cascades，所以 CTE normalization、inline
+            alternative 和 <code>JoinOrderJob</code> 都不是本快照的主线；但两次 drain 不能合并。
+            第一次为初始 Memo 建立统计基线，第二次中的新 logical expression 还会按需再次插入
+            <code>DeriveStatsJob</code>。
           </p>
 
-          <h3>第 3 层：把 JobStack 还原成递归的 Cascades 搜索</h3>
-          <pre><code>void optimizeGroup(Group group, PhysicalProperties required) {
-    if (group.hasBestPlan(required)) {
-        return;
-    }
+          <h3>第 3 层 A：先认识搜索期间真正运行的五类 Job</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Job 类</th>
+                  <th>处理单位</th>
+                  <th>读取的关键状态</th>
+                  <th>可能继续压栈的 Job</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>OptimizeGroupJob</code><br><small>OPTIMIZE_PLAN_SET</small></td>
+                  <td><code>Group + requiredProperty</code></td>
+                  <td>Group 是否已有该 property 的 best；logical/physical expressions；<code>isExplored</code></td>
+                  <td><code>OptimizeGroupExpressionJob</code>、<code>CostAndEnforcerJob</code></td>
+                </tr>
+                <tr>
+                  <td><code>OptimizeGroupExpressionJob</code><br><small>OPTIMIZE_PLAN</small></td>
+                  <td>一个 logical <code>GroupExpression</code></td>
+                  <td>join-reorder 模式、RuleSet、禁用规则、MV 状态</td>
+                  <td>每条 exploration/implementation rule 对应一个 <code>ApplyRuleJob</code></td>
+                </tr>
+                <tr>
+                  <td><code>ApplyRuleJob</code><br><small>APPLY_RULE</small></td>
+                  <td><code>GroupExpression + Rule</code></td>
+                  <td>rule mask、pattern、Memo 大小、owner Group</td>
+                  <td>新 logical：stats + optimize-expression；新 physical：cost</td>
+                </tr>
+                <tr>
+                  <td><code>DeriveStatsJob</code><br><small>DERIVE_STATS</small></td>
+                  <td>一个 logical/physical <code>GroupExpression</code></td>
+                  <td><code>statDerived</code>、child Groups、catalog statistics</td>
+                  <td>child 的 stats job 与当前节点的 continuation</td>
+                </tr>
+                <tr>
+                  <td><code>CostAndEnforcerJob</code><br><small>OPTIMIZE_CHILDREN</small></td>
+                  <td>一个 physical <code>GroupExpression + requiredProperty</code></td>
+                  <td>child property alternatives、child best、cost、output property</td>
+                  <td>带新 property 的 <code>OptimizeGroupJob</code> 与自身 continuation</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
-    for (GroupExpression logical : group.logicalExpressions()) {
-        optimizeGroupExpression(logical, required);
-    }
-    for (GroupExpression physical : group.physicalExpressions()) {
-        costAndEnforce(physical, required);
-    }
-}
+          <p>
+            <code>JobContext</code> 不是只放公共环境。对 optimizer 而言，它最关键的字段是
+            <code>requiredProperties</code>。root context 从
+            <code>PhysicalProperties.GATHER</code> 开始；父算子向 child 提出新要求时，
+            <code>CostAndEnforcerJob</code> 会创建新的
+            <code>JobContext(cascadesContext, requestChildProperty)</code>。
+          </p>
 
-void optimizeGroupExpression(
-        GroupExpression expression,
-        PhysicalProperties required) {
-    for (Rule rule : explorationRules + implementationRules) {
-        for (Plan result : rule.transform(matches(rule, expression))) {
-            CopyInResult copied =
-                    memo.copyIn(result, expression.ownerGroup());
-            if (!copied.generatedNewExpression()) {
-                continue;
-            }
-            GroupExpression candidate = copied.expression();
-
-            if (candidate.isLogical()) {
-                deriveStats(candidate);
-                optimizeGroupExpression(candidate, required);
-            } else {
-                costAndEnforce(candidate, required);
-            }
-        }
-    }
-}
-
-void costAndEnforce(
-        GroupExpression expression,
-        PhysicalProperties required) {
-    for (List&lt;PhysicalProperties&gt; childRequests
-            : deriveChildPropertyAlternatives(expression)) {
-        for (int i = 0; i &lt; expression.arity(); i++) {
-            optimizeGroup(expression.child(i), childRequests.get(i));
-        }
-
-        Cost total = operatorCost(expression)
-                + lowestChildCosts(expression, childRequests);
-        PhysicalProperties output =
-                deriveOutputProperties(expression, childRequests);
-
-        recordCandidate(expression, output, childRequests, total);
-        if (output.satisfy(required)) {
-            recordAsSatisfying(
-                    expression, required, output, childRequests, total);
-        } else {
-            addAndCostEnforcer(expression.ownerGroup(), output, required);
-        }
+          <pre><code>void SimpleJobScheduler.executeJobPool(Context context) {
+    while (!context.jobStack().isEmpty()) {
+        checkPlannerTimeout();
+        Job job = context.jobStack().pop();   // LIFO
+        job.execute();                        // job 可以继续 push 更多 job
     }
 }</code></pre>
 
           <div class="callout warn">
-            <strong>这是语义递归，不是源码调用顺序的逐行复刻：</strong>
-            源码把 continuation 压入单线程 LIFO <code>JobStack</code>，exploration、
-            implementation、统计派生与 cost job 会交错执行。两类 rule 都通过
-            <code>ApplyRuleJob</code>；不是“先完成全部 exploration，再统一 implementation”。
+            <strong>“push 的先后”就是控制流：</strong>
+            scheduler 不理解 Group、rule 或 property，它只做 <code>pop → execute</code>。
+            每个 Job 必须按 LIFO 语义反向压栈：先压回“稍后继续执行的自己”，再压入“现在必须完成的
+            child”。这就是源码用显式 JobStack 表达递归调用栈的方式。
           </div>
 
+          <h3>第 3 层 B：<code>DeriveStatsJob</code> 用 continuation 实现 bottom-up</h3>
+          <pre><code>void DeriveStatsJob.execute() {
+    if (expr.statDerived || expr.unused) {
+        return;
+    }
+
+    if (!deriveChildren &amp;&amp; expr.hasChildren()) {
+        // 先压 continuation；child job 位于栈顶，所以先运行
+        push(new DeriveStatsJob(expr, deriveChildren=true));
+
+        // 逆序压栈，最终按 left → right 执行
+        for (Group child : reverse(expr.children())) {
+            for (GroupExpression logical
+                    : reverse(child.logicalExpressions())) {
+                if (!logical.statDerived) {
+                    push(new DeriveStatsJob(logical));
+                }
+            }
+            for (GroupExpression physical
+                    : reverse(child.physicalExpressions())) {
+                if (!physical.statDerived) {
+                    push(new DeriveStatsJob(physical));
+                }
+            }
+        }
+        return;
+    }
+
+    new StatsCalculator(expr, ...).estimate();
+    // estimate() 更新 owner Group 的 Statistics，并设置 expr.statDerived
+}</code></pre>
+
           <p>
-            对本文 SQL，<code>RequestPropertyDeriver</code> 会为 Hash Join 枚举 broadcast、
-            hash/bucket 等 child requirements；root 的 <code>GATHER</code> 以及排序算子的语义
-            又会引入 gather 和两阶段 sort。每个 Group 保存的是
-            <code>Best(Group, requiredProperty)</code>，而不是一个脱离 property 的全局 best。
+            这里的核心不是“visitor 从叶到根走一遍”，而是同一个 Job 有两个执行时刻：
+            第一次负责安排 child，第二次才计算自己。本文 root <code>@14</code> 的 stats job
+            因而会沿 <code>@13 → @12 → join Groups → scan Groups</code> 下钻，再从 scan
+            向上估算。后续 join commute/associate 产生新的 logical expression 时，
+            <code>ApplyRuleJob</code> 会把新的 <code>DeriveStatsJob</code> 压在对应
+            <code>OptimizeGroupExpressionJob</code> 之上，保证新候选先有统计再继续扩展。
           </p>
+
+          <h3>第 3 层 C：<code>OptimizeGroupJob</code> 与 <code>OptimizeGroupExpressionJob</code> 只负责“展开工作”</h3>
+          <pre><code>void OptimizeGroupJob.execute(Group group, RequiredProperty required) {
+    if (group.lowestCostPlans.contains(required)) {
+        return;                              // Best(G, P) 已存在
+    }
+
+    if (!group.isExplored()) {
+        for (GroupExpression logical
+                : reverse(group.logicalExpressions())) {
+            push(new OptimizeGroupExpressionJob(logical, context));
+        }
+    }
+
+    for (GroupExpression physical
+            : reverse(group.physicalExpressions())) {
+        push(new CostAndEnforcerJob(physical, context));
+    }
+    group.setExplored(true);
+}</code></pre>
+
+          <p>
+            <code>isExplored</code> 不是“这个 Group 对所有 property 都优化完成”。它表示 logical
+            expression 的 rule 工作已经安排过，用来避免递归重入时重复安排 exploration/
+            implementation。新的 required property 仍会重新为现有 physical expressions
+            安排 <code>CostAndEnforcerJob</code>。由于 physical cost jobs 在 logical jobs
+            之后入栈，Group 中若已存在 physical expressions，它们会先于栈中较早压入的
+            logical-expression jobs 执行。
+          </p>
+
+          <pre><code>void OptimizeGroupExpressionJob.execute(GroupExpression logical) {
+    List&lt;Rule&gt; exploration = chooseJoinReorderRules(logical);
+    List&lt;Rule&gt; implementation = ruleSet.getImplementationRules();
+
+    for (Rule rule : exploration) {
+        if (rule.isValid(logical)) {
+            push(new ApplyRuleJob(logical, rule, context));
+        }
+    }
+    for (Rule rule : implementation) {
+        if (rule.isValid(logical)) {
+            push(new ApplyRuleJob(logical, rule, context));
+        }
+    }
+}</code></pre>
+
+          <p>
+            这里再次体现 LIFO：源码先 push exploration rules，再 push implementation rules，
+            所以栈顶的 implementation job 通常先执行；某条 rule 一旦产生新表达式，它压入的 stats、
+            optimize 或 cost job 又会先于尚未执行的 sibling rule。真实顺序是深度优先交错，
+            不是“先枚举完所有 join order，再统一转物理算子”。
+          </p>
+
+          <div class="grid-2">
+            <div class="card">
+              <h4>本 SQL 会命中的 exploration</h4>
+              <p>
+                普通 Cascades 根据 session 与统计可靠性选择 zig-zag、left-zig-zag 或 bushy
+                join reorder rules。当前 Memo 中 <code>@9</code> 和 <code>@11</code> 都出现了
+                join commute 后的左右交换表达式，三表重结合又产生 <code>@16..@19</code>。
+              </p>
+            </div>
+            <div class="card">
+              <h4>本 SQL 会命中的 implementation</h4>
+              <p>
+                <code>LogicalOlapScanToPhysicalOlapScan</code>、filter/project/sink 转换、
+                <code>LogicalJoinToHashJoin</code> 与 <code>LogicalSortToPhysicalQuickSort</code>。
+                RuleSet 中其他算子实现规则因 pattern 不匹配而不会改变本次 Memo。
+              </p>
+            </div>
+          </div>
+
+          <h3>第 3 层 D：<code>ApplyRuleJob</code> 是普通 Cascades Rule 与 Memo 之间的桥</h3>
+          <pre><code>void ApplyRuleJob.execute(GroupExpression source, Rule rule) {
+    if (source.hasApplied(rule) || source.unused) {
+        return;
+    }
+
+    for (Plan boundPlan
+            : new GroupExpressionMatching(rule.pattern(), source)) {
+        for (Plan transformed : rule.transform(boundPlan, context)) {
+            CopyInResult copied =
+                    memo.copyIn(transformed, source.ownerGroup(), false);
+            if (!copied.generatedNewExpression()) {
+                continue;                   // Memo 已存在等价表达式
+            }
+
+            GroupExpression candidate = copied.expression();
+            candidate.setFromRule(rule);
+
+            if (transformed instanceof LogicalPlan) {
+                push(new OptimizeGroupExpressionJob(candidate, context));
+                push(new DeriveStatsJob(candidate, context));
+                // LIFO：stats 先执行，之后才继续展开 candidate
+            } else {
+                push(new CostAndEnforcerJob(candidate, context));
+                maybePushStatsForNewChildGroups(candidate);
+            }
+        }
+    }
+    source.setApplied(rule);                // rule mask 防止重复应用
+}</code></pre>
+
+          <p>
+            pattern matching 面对的不是一棵已经 copy-out 的树。
+            <code>GroupExpressionMatching</code> 会把 expression 的 child Groups 中符合 pattern
+            的表达式组合成临时 Plan 交给 rule；rule 结果再通过 <code>Memo.copyIn</code>
+            去重、建 Group 或合并 Group。被合并掉但仍残留在 JobStack 中的 expression 会标记为
+            <code>unused</code>，后续 Job 直接跳过。
+          </p>
+
+          <div class="callout violet">
+            <strong>Memo 快照中的直接证据：</strong>
+            <code>Group[@9]</code> 有两个 LogicalJoin，children 分别是
+            <code>[@5,@8]</code> 与 <code>[@8,@5]</code>；implementation 又产生两个
+            PhysicalHashJoin。原始 logical、commuted logical、physical implementation
+            都留在同一个等价 Group 中，并不是用新树覆盖旧树。
+          </div>
+
+          <h3>第 3 层 E：<code>CostAndEnforcerJob</code> 才真正递归请求 <code>Best(child, property)</code></h3>
+          <pre><code>void CostAndEnforcerJob.execute() {
+    if (firstEntry) {
+        childPropertyAlternatives =
+                new RequestPropertyDeriver(parentRequired)
+                        .derive(physicalExpression);
+    }
+
+    for (PropertyVector childRequests : childPropertyAlternatives) {
+        Cost total = costOfCurrentOperator(physicalExpression, childRequests);
+
+        for (; childIndex &lt; arity; childIndex++) {
+            Group child = physicalExpression.child(childIndex);
+            PhysicalProperties childRequired = childRequests[childIndex];
+
+            Optional&lt;BestPlan&gt; best =
+                    child.getLowestCostPlan(childRequired);
+            if (best.isEmpty()) {
+                push(this.clone());          // continuation：child 完成后从此处恢复
+                push(new OptimizeGroupJob(
+                        child,
+                        new JobContext(cascadesContext, childRequired)));
+                return;                     // 栈顶先优化 child
+            }
+
+            total += best.cost;
+            rememberActualChildOutput(best.outputProperty);
+        }
+
+        List&lt;PropertyVector&gt; regulated =
+                regulateChildrenOutputProperties(...);
+        for (PropertyVector actualChildren : regulated) {
+            PhysicalProperties output =
+                    deriveOutputProperty(actualChildren);
+            Cost adjusted = recomputeTotalCost(actualChildren);
+
+            record(expression, output, actualChildren, adjusted);
+            if (output.satisfy(parentRequired)) {
+                record(expression, parentRequired, actualChildren, adjusted);
+            } else {
+                enforceMissingProperty(output, parentRequired, adjusted);
+            }
+        }
+        resetContinuationStateForNextAlternative();
+    }
+}</code></pre>
+
+          <p>
+            <code>clone()</code> 是这段代码的关键。它保存当前 physical expression 已经尝试到
+            哪组 child properties、处理到第几个 child、已经累计多少 cost；子 Group 得到
+            <code>Best(child, childRequired)</code> 后，scheduler 再 pop continuation，
+            而不是从头重跑整个候选。
+          </p>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>本文 SQL 的物理算子</th>
+                  <th><code>RequestPropertyDeriver</code> 枚举/传递什么</th>
+                  <th>Memo 中的结果</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>PhysicalResultSink @14</code></td>
+                  <td>普通非 parallel result sink 要求 child 为 <code>GATHER</code>。</td>
+                  <td>root 记录 <code>Best(@14, GATHER)=PhysicalResultSink #90</code>。</td>
+                </tr>
+                <tr>
+                  <td><code>PhysicalQuickSort @13</code></td>
+                  <td>比较 gather sort 与 local sort → gather → merge sort 等实现/属性组合。</td>
+                  <td>选择 merge sort #95；其 child 走 local sort <code>@15</code> 与 gather enforcer #198。</td>
+                </tr>
+                <tr>
+                  <td>内层 Hash Join <code>@9</code></td>
+                  <td>枚举 shuffle/shuffle 与 left-any-or-hash + right-replicated 等 child property vectors。</td>
+                  <td>选择 Hash Join #110：orders 保留天然 hash 分布，customer 经 broadcast/replicated。</td>
+                </tr>
+                <tr>
+                  <td>外层 Hash Join <code>@11</code></td>
+                  <td>为 <code>l_orderkey=o_orderkey</code> 枚举两侧 hash/bucket 对齐及 broadcast 可行性。</td>
+                  <td>选择 #100：lineitem 保留天然 hash，orders/customer 子树由 enforcer #144 转成 storage-bucketed。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="callout">
+            <strong>Enforcer 不是第六种调度 Job：</strong>
+            当 output property 不满足 parent required property 时，
+            <code>CostAndEnforcerJob</code> 调用 <code>EnforceMissingPropertiesHelper</code>，
+            直接在同一 Group 中加入并计价 <code>PhysicalDistribute</code> 或
+            <code>PhysicalQuickSort</code> GroupExpression。它们随后和普通 physical expression
+            一样进入 lowest-cost tables。
+          </div>
+
+          <h3>第 3 层 F：用本 SQL 串起一次真实的 Job continuation</h3>
+          <pre><code>push OptimizeGroup(@14, GATHER)
+└─ OptimizeGroupExpression(LogicalResultSink @14)
+   └─ ApplyRule(LogicalResultSinkToPhysicalResultSink)
+      └─ CostAndEnforcer(PhysicalResultSink #90, GATHER)
+         ├─ push continuation CostAndEnforcer(#90)
+         └─ push OptimizeGroup(@13, GATHER)          ← 先运行
+            └─ ApplyRule(LogicalSortToPhysicalQuickSort)
+               └─ CostAndEnforcer(sort candidates)
+                  ├─ request Best(@15, GATHER)
+                  │  └─ local sort + PhysicalDistribute #198
+                  └─ request Best(@12, hash/ANY)
+                     └─ ... project → outer join @11
+                        ├─ Best(@2, hash(l_orderkey))
+                        └─ Best(@10, hash(o_orderkey))
+                           └─ ... inner join @9
+
+child best 写回后：
+pop continuation CostAndEnforcer(#90)
+└─ 累加 child cost → 推导 output property → 记录 Best(@14, GATHER)</code></pre>
+
+          <p>
+            上图只展示一条 continuation 链，不代表其他 rule job 已经结束。LIFO 栈中仍可能有
+            尚未运行的 join commute、其他 implementation 或其他 property vector；新 Job
+            总是插到栈顶，因此搜索会在“产生候选 → 补统计 → 向 child 请求 property → 回来计价”
+            之间深度优先交错。
+          </p>
+
+          <h3>第 3 层 G：六组状态共同阻止重复工作</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>状态</th>
+                  <th>key</th>
+                  <th>value / 含义</th>
+                  <th>由谁更新</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>Group.isExplored</code></td>
+                  <td>Group</td>
+                  <td>该 Group 的 logical rule 工作已经安排，避免递归重入时重复展开。</td>
+                  <td><code>OptimizeGroupJob</code></td>
+                </tr>
+                <tr>
+                  <td><code>GroupExpression.ruleMasks</code></td>
+                  <td>expression + RuleType</td>
+                  <td>某条 rule 已对该 expression 尝试过。</td>
+                  <td><code>ApplyRuleJob</code></td>
+                </tr>
+                <tr>
+                  <td><code>GroupExpression.statDerived</code></td>
+                  <td>expression</td>
+                  <td>该表达式的统计已经可用；新 logical alternative 需要重新派生。</td>
+                  <td><code>DeriveStatsJob</code> / 特殊等价规则</td>
+                </tr>
+                <tr>
+                  <td><code>Group.lowestCostPlans</code></td>
+                  <td>required property</td>
+                  <td><code>(lowest total cost, winning GroupExpression)</code>。</td>
+                  <td><code>CostAndEnforcerJob</code></td>
+                </tr>
+                <tr>
+                  <td><code>GroupExpression.lowestCostTable</code></td>
+                  <td>supported/request property</td>
+                  <td><code>(total cost, child input properties)</code>，供 continuation 与 copy-out 使用。</td>
+                  <td><code>CostAndEnforcerJob</code></td>
+                </tr>
+                <tr>
+                  <td><code>requestPropertiesMap</code></td>
+                  <td>incoming required property</td>
+                  <td>实际满足它的 output property，区分“请求”与“算子真实产出”。</td>
+                  <td><code>CostAndEnforcerJob</code></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
           <pre><code>Group.lowestCostPlans:
   requiredProperty
     → (lowestTotalCost, winningGroupExpression)
 
 GroupExpression.lowestCostTable:
-  requiredProperty
+  property
     → (totalCost, childRequiredProperties)
 
 GroupExpression.requestPropertiesMap:
-  requiredProperty
+  incomingRequiredProperty
     → actualOutputProperty</code></pre>
 
           <h3>第 4 层：按 property 递归 copy-out，而不是“遍历所有候选再挑一次”</h3>
@@ -1297,7 +1667,18 @@ FragmentIdMapping&lt;DistributedPlan&gt; distribute(PhysicalPlan plan) {
             <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/executor/Rewriter.java">Rewriter.java</a>
             <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/executor/Optimizer.java">Optimizer.java</a>
             <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/memo/Memo.java">Memo.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/memo/Group.java">Group.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/memo/GroupExpression.java">GroupExpression.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/RuleSet.java">RuleSet.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/JobContext.java">JobContext.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/scheduler/SimpleJobScheduler.java">SimpleJobScheduler.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/OptimizeGroupJob.java">OptimizeGroupJob.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/OptimizeGroupExpressionJob.java">OptimizeGroupExpressionJob.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/ApplyRuleJob.java">ApplyRuleJob.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/DeriveStatsJob.java">DeriveStatsJob.java</a>
             <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/CostAndEnforcerJob.java">CostAndEnforcerJob.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/RequestPropertyDeriver.java">RequestPropertyDeriver.java</a>
+            <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/properties/EnforceMissingPropertiesHelper.java">EnforceMissingPropertiesHelper.java</a>
             <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/processor/post/PlanPostProcessors.java">PlanPostProcessors.java</a>
           </p>
         </section>
@@ -2394,24 +2775,26 @@ GroupExpression.requestPropertiesMap:
               <h3>Memo 与物理选择</h3>
               <pre><code>8. CascadesContext#toMemo
 9. Memo#init / copyIn
-10. OptimizeGroupJob#execute
-11. ApplyRuleJob#execute
-12. DeriveStatsJob#execute
-13. CostAndEnforcerJob#execute
-14. EnforceMissingPropertiesHelper#enforceProperty
-15. NereidsPlanner#chooseBestPlan</code></pre>
+10. SimpleJobScheduler#executeJobPool
+11. OptimizeGroupJob#execute
+12. OptimizeGroupExpressionJob#execute
+13. ApplyRuleJob#execute
+14. DeriveStatsJob#execute
+15. CostAndEnforcerJob#execute
+16. EnforceMissingPropertiesHelper#enforceProperty
+17. NereidsPlanner#chooseBestPlan</code></pre>
             </div>
           </div>
           <div class="grid-2">
             <div class="card">
               <h3>翻译与分布</h3>
-              <pre><code>16. PlanPostProcessors#process
-17. PhysicalPlanTranslator#translatePlan
-18. PhysicalPlanTranslator#visitPhysicalDistribute
-19. PhysicalPlanTranslator#visitPhysicalHashJoin
-20. DistributePlanner#plan
-21. AssignedJobBuilder#buildJobs
-22. AddLocalExchange#addLocalExchange</code></pre>
+              <pre><code>18. PlanPostProcessors#process
+19. PhysicalPlanTranslator#translatePlan
+20. PhysicalPlanTranslator#visitPhysicalDistribute
+21. PhysicalPlanTranslator#visitPhysicalHashJoin
+22. DistributePlanner#plan
+23. AssignedJobBuilder#buildJobs
+24. AddLocalExchange#addLocalExchange</code></pre>
             </div>
             <div class="card">
               <h3>每一站固定检查</h3>
@@ -2453,7 +2836,11 @@ GroupExpression.requestPropertiesMap:
                 <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/memo/Memo.java">Memo.java</a>
                 <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/memo/Group.java">Group.java</a>
                 <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/memo/GroupExpression.java">GroupExpression.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/RuleSet.java">RuleSet.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/JobContext.java">JobContext.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/scheduler/SimpleJobScheduler.java">SimpleJobScheduler.java</a>
                 <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/OptimizeGroupJob.java">OptimizeGroupJob.java</a>
+                <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/OptimizeGroupExpressionJob.java">OptimizeGroupExpressionJob.java</a>
                 <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/ApplyRuleJob.java">ApplyRuleJob.java</a>
                 <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/DeriveStatsJob.java">DeriveStatsJob.java</a>
                 <a class="source" href="../fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/cascades/CostAndEnforcerJob.java">CostAndEnforcerJob.java</a>
@@ -2509,7 +2896,7 @@ GroupExpression.requestPropertiesMap:
 
       <footer>
         Apache Doris Nereids · Source-level SQL optimization workflow ·
-        <time datetime="2026-07-24">2026-07-24</time>
+        <time datetime="2026-07-25">2026-07-25</time>
       </footer>
     </main>
   </div>
