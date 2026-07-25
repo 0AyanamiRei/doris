@@ -1,0 +1,291 @@
+digraph CascadesGroupExpressions {
+  graph [
+    rankdir=TB,
+    newrank=true,
+    bgcolor="#F8FAFC",
+    pad=0.35,
+    nodesep=0.22,
+    ranksep=0.30,
+    splines=line,
+    labelloc=t,
+    labeljust=l,
+    fontname="DejaVu Sans",
+    fontsize=22,
+    label="Nereids Memo — Group / GroupExpression matrix\nTPC-H Q3 teaching SQL · square cards are Groups · rounded cards are expressions · green border means CHOSEN\nBlue = Logical · Green = Physical · Amber = Enforcer · @0–@14 come from toMemo() · @15–@19 are added during optimization"
+  ];
+
+  node [
+    fontname="DejaVu Sans",
+    fontsize=11,
+    color="#111827",
+    fontcolor="#111827",
+    penwidth=1.8,
+    margin="0.13,0.08",
+    height=0.72
+  ];
+
+  edge [style=invis, weight=100];
+
+  g0  [shape=box, style="filled", fillcolor="#FFFFFF", width=2.55,
+       label="Group @0\nlineitem scan\nchosen: e106"];
+  x74  [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+        label="e74 · LogicalOlapScan\nlineitem · children: —\nLOGICAL"];
+  x106 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+        color="#16835A", penwidth=3,
+        label="e106 · PhysicalOlapScan\nlineitem · children: —\nPHYSICAL · CHOSEN"];
+  { rank=same; g0; x74; x106; }
+  g0 -> x74 -> x106;
+
+  g1  [shape=box, style="filled", fillcolor="#FFFFFF", width=2.55,
+       label="Group @1\nlineitem ship-date filter\nchosen: e104"];
+  x75  [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+        label="e75 · LogicalFilter\nchildren: @0\nl_shipdate > 1995-03-15"];
+  x104 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+        color="#16835A", penwidth=3,
+        label="e104 · PhysicalFilter\nchildren: @0\nPHYSICAL · CHOSEN"];
+  { rank=same; g1; x75; x104; }
+  g1 -> x75 -> x104;
+
+  g2  [shape=box, style="filled", fillcolor="#FFFFFF", width=2.55,
+       label="Group @2\nlineitem projection\nchosen: e102"];
+  x76  [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+        label="e76 · LogicalProject\nchildren: @1\nl_orderkey, l_linenumber"];
+  x102 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+        color="#16835A", penwidth=3,
+        label="e102 · PhysicalProject\nchildren: @1\nPHYSICAL · CHOSEN"];
+  x152 [shape=box, style="rounded,filled", fillcolor="#FFF0C2",
+        label="e152 · PhysicalDistribute\nchildren: @2\nSTORAGE_BUCKETED"];
+  x154 [shape=box, style="rounded,filled", fillcolor="#FFF0C2",
+        label="e154 · PhysicalDistribute\nchildren: @2\nREPLICATED"];
+  { rank=same; g2; x76; x102; x152; x154; }
+  g2 -> x76 -> x102 -> x152 -> x154;
+
+  g3  [shape=box, style="filled", fillcolor="#FFFFFF", width=2.55,
+       label="Group @3\norders scan\nchosen: e116"];
+  x77  [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+        label="e77 · LogicalOlapScan\norders · children: —\nLOGICAL"];
+  x116 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+        color="#16835A", penwidth=3,
+        label="e116 · PhysicalOlapScan\norders · children: —\nPHYSICAL · CHOSEN"];
+  x122 [shape=box, style="rounded,filled", fillcolor="#FFF0C2",
+        label="e122 · PhysicalDistribute\nchildren: @3\nEXECUTION_BUCKETED"];
+  { rank=same; g3; x77; x116; x122; }
+  g3 -> x77 -> x116 -> x122;
+
+  g4  [shape=box, style="filled", fillcolor="#FFFFFF", width=2.55,
+       label="Group @4\norders date filter\nchosen: e114"];
+  x78  [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+        label="e78 · LogicalFilter\nchildren: @3\no_orderdate < 1995-03-15"];
+  x114 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+        color="#16835A", penwidth=3,
+        label="e114 · PhysicalFilter\nchildren: @3\nPHYSICAL · CHOSEN"];
+  x120 [shape=box, style="rounded,filled", fillcolor="#FFF0C2",
+        label="e120 · PhysicalDistribute\nchildren: @4\nEXECUTION_BUCKETED"];
+  { rank=same; g4; x78; x114; x120; }
+  g4 -> x78 -> x114 -> x120;
+
+  g5  [shape=box, style="filled", fillcolor="#FFFFFF", width=2.55,
+       label="Group @5\norders projection\nchosen: e112"];
+  x79  [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+        label="e79 · LogicalProject\nchildren: @4\norder key, customer key, date"];
+  x112 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+        color="#16835A", penwidth=3,
+        label="e112 · PhysicalProject\nchildren: @4\nPHYSICAL · CHOSEN"];
+  x118 [shape=box, style="rounded,filled", fillcolor="#FFF0C2",
+        label="e118 · PhysicalDistribute\nchildren: @5\nEXECUTION_BUCKETED(custkey)"];
+  x132 [shape=box, style="rounded,filled", fillcolor="#FFF0C2",
+        label="e132 · PhysicalDistribute\nchildren: @5\nSTORAGE_BUCKETED(custkey)"];
+  x140 [shape=box, style="rounded,filled", fillcolor="#FFF0C2",
+        label="e140 · PhysicalDistribute\nchildren: @5\nREPLICATED"];
+  x173 [shape=box, style="rounded,filled", fillcolor="#FFF0C2",
+        label="e173 · PhysicalDistribute\nchildren: @5\nSTORAGE_BUCKETED(orderkey)"];
+  { rank=same; g5; x79; x112; x118; x132; x140; x173; }
+  g5 -> x79 -> x112 -> x118 -> x132 -> x140 -> x173;
+
+  g6  [shape=box, style="filled", fillcolor="#FFFFFF", width=2.55,
+       label="Group @6\ncustomer scan\nchosen: e128"];
+  x80  [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+        label="e80 · LogicalOlapScan\ncustomer · children: —\nLOGICAL"];
+  x128 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+        color="#16835A", penwidth=3,
+        label="e128 · PhysicalOlapScan\ncustomer · children: —\nPHYSICAL · CHOSEN"];
+  { rank=same; g6; x80; x128; }
+  g6 -> x80 -> x128;
+
+  g7  [shape=box, style="filled", fillcolor="#FFFFFF", width=2.55,
+       label="Group @7\nmarket-segment filter\nchosen: e126"];
+  x81  [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+        label="e81 · LogicalFilter\nchildren: @6\nc_mktsegment = BUILDING"];
+  x126 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+        color="#16835A", penwidth=3,
+        label="e126 · PhysicalFilter\nchildren: @6\nPHYSICAL · CHOSEN"];
+  { rank=same; g7; x81; x126; }
+  g7 -> x81 -> x126;
+
+  g8  [shape=box, style="filled", fillcolor="#FFFFFF", width=2.55,
+       label="Group @8\ncustomer projection\nchosen: e124"];
+  x82  [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+        label="e82 · LogicalProject\nchildren: @7\nc_custkey"];
+  x124 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+        color="#16835A", penwidth=3,
+        label="e124 · PhysicalProject\nchildren: @7\nPHYSICAL · CHOSEN"];
+  x130 [shape=box, style="rounded,filled", fillcolor="#FFF0C2",
+        label="e130 · PhysicalDistribute\nchildren: @8\nEXECUTION_BUCKETED"];
+  x134 [shape=box, style="rounded,filled", fillcolor="#FFF0C2",
+        label="e134 · PhysicalDistribute\nchildren: @8\nREPLICATED"];
+  { rank=same; g8; x82; x124; x130; x134; }
+  g8 -> x82 -> x124 -> x130 -> x134;
+
+  g9  [shape=box, style="filled", fillcolor="#FFFFFF", width=2.55,
+       label="Group @9\norders ⋈ customer\nchosen: e110"];
+  x83  [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+        label="e83 · LogicalJoin\nchildren: @5, @8\norders ⋈ customer"];
+  x136 [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+        label="e136 · LogicalJoin\nchildren: @8, @5\ncustomer ⋈ orders"];
+  x110 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+        color="#16835A", penwidth=3,
+        label="e110 · PhysicalHashJoin\nchildren: @5, @8\nPHYSICAL · CHOSEN"];
+  x138 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+        label="e138 · PhysicalHashJoin\nchildren: @8, @5\nPHYSICAL"];
+  x142 [shape=box, style="rounded,filled", fillcolor="#FFF0C2",
+        label="e142 · PhysicalDistribute\nchildren: @9\nEXECUTION_BUCKETED"];
+  { rank=same; g9; x83; x136; x110; x138; x142; }
+  g9 -> x83 -> x136 -> x110 -> x138 -> x142;
+
+  g10 [shape=box, style="filled", fillcolor="#FFFFFF", width=2.55,
+       label="Group @10\norders/customer projection\nchosen: e108"];
+  x84  [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+        label="e84 · LogicalProject\nchildren: @9\ncustkey, orderkey, orderdate"];
+  x108 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+        color="#16835A", penwidth=3,
+        label="e108 · PhysicalProject\nchildren: @9\nPHYSICAL · CHOSEN"];
+  x144 [shape=box, style="rounded,filled", fillcolor="#FFF0C2",
+        label="e144 · PhysicalDistribute\nchildren: @10\nSTORAGE_BUCKETED"];
+  x146 [shape=box, style="rounded,filled", fillcolor="#FFF0C2",
+        label="e146 · PhysicalDistribute\nchildren: @10\nREPLICATED"];
+  { rank=same; g10; x84; x108; x144; x146; }
+  g10 -> x84 -> x108 -> x144 -> x146;
+
+  g11 [shape=box, style="filled", fillcolor="#FFFFFF", width=2.55,
+       label="Group @11\nlineitem ⋈ (orders/customer)\nchosen: e100"];
+  x85  [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+        label="e85 · LogicalJoin\nchildren: @2, @10\nlineitem ⋈ order/customer"];
+  x148 [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+        label="e148 · LogicalJoin\nchildren: @10, @2\norder/customer ⋈ lineitem"];
+  x100 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+        color="#16835A", penwidth=3,
+        label="e100 · PhysicalHashJoin\nchildren: @2, @10\nPHYSICAL · CHOSEN"];
+  x150 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+        label="e150 · PhysicalHashJoin\nchildren: @10, @2\nPHYSICAL"];
+  { rank=same; g11; x85; x148; x100; x150; }
+  g11 -> x85 -> x148 -> x100 -> x150;
+
+  g12 [shape=box, style="filled", fillcolor="#FFFFFF", width=2.55,
+       label="Group @12\nfinal projection\nchosen: e98"];
+  x86  [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+        label="e86 · LogicalProject\nchildren: @11\noriginal join tree"];
+  x163 [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+        label="e163 · LogicalProject\nchildren: @19\nreordered join tree"];
+  x98  [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+        color="#16835A", penwidth=3,
+        label="e98 · PhysicalProject\nchildren: @11\nPHYSICAL · CHOSEN"];
+  x165 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+        label="e165 · PhysicalProject\nchildren: @19\nPHYSICAL"];
+  x156 [shape=box, style="rounded,filled", fillcolor="#FFF0C2",
+        label="e156 · PhysicalDistribute\nchildren: @12\nGATHER"];
+  { rank=same; g12; x86; x163; x98; x165; x156; }
+  g12 -> x86 -> x163 -> x98 -> x165 -> x156;
+
+  g13 [shape=box, style="filled", fillcolor="#FFFFFF", width=2.55,
+       label="Group @13\nORDER BY\nchosen: e95"];
+  x87 [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+       label="e87 · LogicalSort\nchildren: @12\norderdate, orderkey, linenumber"];
+  x95 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+       color="#16835A", penwidth=3,
+       label="e95 · PhysicalQuickSort\nchildren: @15\nMERGE_SORT · CHOSEN"];
+  x96 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+       label="e96 · PhysicalQuickSort\nchildren: @12\nGATHER_SORT"];
+  { rank=same; g13; x87; x95; x96; }
+  g13 -> x87 -> x95 -> x96;
+
+  g14 [shape=box, style="filled", fillcolor="#FEF3C7", color="#A16207",
+       penwidth=2.8, width=2.55,
+       label="ROOT Group @14\nresult sink\nchosen: e90"];
+  x88 [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+       label="e88 · LogicalResultSink\nchildren: @13\nLOGICAL"];
+  x90 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+       color="#16835A", penwidth=3,
+       label="e90 · PhysicalResultSink\nchildren: @13\nPHYSICAL · CHOSEN"];
+  { rank=same; g14; x88; x90; }
+  g14 -> x88 -> x90;
+
+  g15 [shape=box, style="filled", fillcolor="#F3E8FF", color="#7E22CE",
+       width=2.55, label="Group @15\nlocal-sort helper\nchosen: e94 · CBO-added"];
+  x94 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+       color="#16835A", penwidth=3,
+       label="e94 · PhysicalQuickSort\nchildren: @12\nLOCAL_SORT · CHOSEN"];
+  x198 [shape=box, style="rounded,filled", fillcolor="#FFF0C2",
+        label="e198 · PhysicalDistribute\nchildren: @15\nGATHER"];
+  { rank=same; g15; x94; x198; }
+  g15 -> x94 -> x198;
+
+  g16 [shape=box, style="filled", fillcolor="#F3E8FF", color="#7E22CE",
+       width=2.55, label="Group @16\nlineitem ⋈ orders\nchosen: — · CBO-added"];
+  x159 [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+        label="e159 · LogicalJoin\nchildren: @2, @5\nlineitem ⋈ orders"];
+  x175 [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+        label="e175 · LogicalJoin\nchildren: @5, @2\norders ⋈ lineitem"];
+  x171 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+        label="e171 · PhysicalHashJoin\nchildren: @2, @5\nPHYSICAL"];
+  x177 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+        label="e177 · PhysicalHashJoin\nchildren: @5, @2\nPHYSICAL"];
+  x181 [shape=box, style="rounded,filled", fillcolor="#FFF0C2",
+        label="e181 · PhysicalDistribute\nchildren: @16\nEXECUTION_BUCKETED"];
+  { rank=same; g16; x159; x175; x171; x177; x181; }
+  g16 -> x159 -> x175 -> x171 -> x177 -> x181;
+
+  g17 [shape=box, style="filled", fillcolor="#F3E8FF", color="#7E22CE",
+       width=2.55, label="Group @17\nreordered join projection\nchosen: — · CBO-added"];
+  x160 [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+        label="e160 · LogicalProject\nchildren: @16\nline/order join columns"];
+  x169 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+        label="e169 · PhysicalProject\nchildren: @16\nPHYSICAL"];
+  x179 [shape=box, style="rounded,filled", fillcolor="#FFF0C2",
+        label="e179 · PhysicalDistribute\nchildren: @17\nEXECUTION_BUCKETED"];
+  x188 [shape=box, style="rounded,filled", fillcolor="#FFF0C2",
+        label="e188 · PhysicalDistribute\nchildren: @17\nSTORAGE_BUCKETED"];
+  x196 [shape=box, style="rounded,filled", fillcolor="#FFF0C2",
+        label="e196 · PhysicalDistribute\nchildren: @17\nREPLICATED"];
+  { rank=same; g17; x160; x169; x179; x188; x196; }
+  g17 -> x160 -> x169 -> x179 -> x188 -> x196;
+
+  g18 [shape=box, style="filled", fillcolor="#F3E8FF", color="#7E22CE",
+       width=2.55, label="Group @18\ncustomer helper projection\nchosen: — · CBO-added"];
+  x161 [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+        label="e161 · LogicalProject\nchildren: @8\nc_custkey"];
+  x183 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+        label="e183 · PhysicalProject\nchildren: @8\nPHYSICAL"];
+  x186 [shape=box, style="rounded,filled", fillcolor="#FFF0C2",
+        label="e186 · PhysicalDistribute\nchildren: @18\nEXECUTION_BUCKETED"];
+  x190 [shape=box, style="rounded,filled", fillcolor="#FFF0C2",
+        label="e190 · PhysicalDistribute\nchildren: @18\nREPLICATED"];
+  { rank=same; g18; x161; x183; x186; x190; }
+  g18 -> x161 -> x183 -> x186 -> x190;
+
+  g19 [shape=box, style="filled", fillcolor="#F3E8FF", color="#7E22CE",
+       width=2.55, label="Group @19\n(lineitem/orders) ⋈ customer\nchosen: — · CBO-added"];
+  x162 [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+        label="e162 · LogicalJoin\nchildren: @17, @18\nline/order ⋈ customer"];
+  x192 [shape=box, style="rounded,filled", fillcolor="#DCEFF5",
+        label="e192 · LogicalJoin\nchildren: @18, @17\ncustomer ⋈ line/order"];
+  x167 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+        label="e167 · PhysicalHashJoin\nchildren: @17, @18\nPHYSICAL"];
+  x194 [shape=box, style="rounded,filled", fillcolor="#E7F5E9",
+        label="e194 · PhysicalHashJoin\nchildren: @18, @17\nPHYSICAL"];
+  { rank=same; g19; x162; x192; x167; x194; }
+  g19 -> x162 -> x192 -> x167 -> x194;
+
+  g0 -> g1 -> g2 -> g3 -> g4 -> g5 -> g6 -> g7 -> g8 -> g9
+     -> g10 -> g11 -> g12 -> g13 -> g14 -> g15 -> g16 -> g17 -> g18 -> g19
+     [style=invis, weight=1000];
+}
