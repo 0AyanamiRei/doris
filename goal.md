@@ -21,6 +21,8 @@ Indexed Algebra 论文为
 
 ## 2. 核心模型
 
+
+
 ### 2.1 分层
 
 ```text
@@ -85,6 +87,8 @@ outer Apply:
 3. 最终去相关结果不能残留 free IU；
 4. Binder 的词法层级和 Plan 的拓扑层级不能混为一谈。
 
+
+
 ## 3. 实施原则
 
 1. 原则上一个任务对应一个小 PR；只有纯机械且无法独立测试的任务才合并。
@@ -96,6 +100,8 @@ outer Apply:
 7. 路径屏障首先保持当前报错和改写边界不变，后续任务再逐项解除限制。
 8. 性能测试不在 CI 中断言墙钟时间；CI 验证正确性，固定 harness 用于趋势和分配量比较。
 9. 新增回归结果必须由回归测试脚本生成，不能手写 `.out`。
+
+
 
 ## 4. 依赖关系与阶段
 
@@ -169,7 +175,11 @@ G4 Subquery client      G5 Predicate placement client
 
 ---
 
+
+
 ## 5. G0：基线与可观测性
+
+
 
 ### G0.1 固化当前相关子查询行为
 
@@ -203,6 +213,8 @@ G4 Subquery client      G5 Predicate placement client
 - 当前行为全部有测试覆盖；
 - 每个失败用例能区分“名字找不到”“显式语义限制”“legacy unnest 不支持”。
 
+
+
 ### G0.2 增加优化器观测指标
 
 **目标**
@@ -233,7 +245,11 @@ InferPredicates / HyperGraph / AdjustNullable 时间
 
 ---
 
+
+
 ## 6. G1：Query-Block-aware Binder
+
+
 
 ### G1.1 引入 `QueryBlockId`，不改变绑定行为
 
@@ -259,6 +275,8 @@ InferPredicates / HyperGraph / AdjustNullable 时间
 
 - Query Block ID 生成和继承单元测试；
 - 现有 Analyzer 全量相关单测结果不变。
+
+
 
 ### G1.2 为 `Scope` 增加种类和 owner
 
@@ -295,6 +313,8 @@ Scope.standalone(...);
 - 现有单层相关子查询行为不变；
 - 所有 Scope factory 有直接单测或被 Analyzer 测试覆盖。
 
+
+
 ### G1.3 提取 `SlotResolution`
 
 **目标**
@@ -329,6 +349,8 @@ record SlotResolution(
 - qualified lookup；
 - nested struct/variant field 的底层 provider Slot。
 
+
+
 ### G1.4 支持任意层 lexical lookup，但保留执行 gate
 
 **目标**
@@ -340,7 +362,7 @@ record SlotResolution(
 - `ExpressionAnalyzer.visitUnboundSlot()` 使用 `SlotResolution`；
 - 允许沿 Scope 链查找；
 - 当 `lexicalDepth > 1` 且 holistic unnest 尚未启用时，返回明确的功能 gate 错误，而不是
-  `Unknown column`。
+`Unknown column`。
 
 **验证**
 
@@ -348,6 +370,8 @@ record SlotResolution(
 - 中间层 shadowing 正确；
 - 同一个祖父 Slot 多次引用时，绑定 occurrence 不丢失；
 - 默认路径仍不把多层相关 SQL 送入不兼容的 legacy unnest。
+
+
 
 ### G1.5 建立 `BindingGraph` 和自由变量闭包
 
@@ -389,7 +413,11 @@ Q2 uses Q1.a and Q0.b:
 
 ---
 
+
+
 ## 7. G2：Correlation IR 兼容层
+
+
 
 ### G2.1 新增 `CorrelationDescriptor`
 
@@ -420,6 +448,8 @@ record CorrelationDescriptor(
 - 单层相关的 legacy Slot 列表完全一致；
 - 多层场景能看到 direct use 和 transitive capture。
 
+
+
 ### G2.2 支持 descriptor deep copy
 
 **目标**
@@ -437,6 +467,8 @@ record CorrelationDescriptor(
 - copy 前后 Query Block 关系不变；
 - Slot/ExprId 全部指向 copy 后对象；
 - 原计划和 copy 之间不存在意外 Slot identity 混用。
+
+
 
 ### G2.3 扩展 `LogicalApply` 的依赖模型
 
@@ -468,6 +500,8 @@ hasInheritedDependency();
 - 祖父引用在 inner Apply 上为 inherited，在 outer Apply 上为 direct；
 - inherited IU 不再被错误要求出现在 inner Apply.left output 中。
 
+
+
 ### G2.4 替换对 `Scope.correlatedSlots` 的特殊读取
 
 **目标**
@@ -493,7 +527,11 @@ hasInheritedDependency();
 
 ---
 
+
+
 ## 8. G3：Pass-local 静态 Algebra Index
+
+
 
 ### G3.1 定义 IU definition/use inventory
 
@@ -535,6 +573,8 @@ interface PlanExpressionInventory {
 - 同一表达式重复使用一个 Slot 时保留多个 occurrence；
 - 新增受支持 Logical Plan 类型时，有测试提醒 inventory 未覆盖。
 
+
+
 ### G3.2 建立静态 forest 和 LCA
 
 **目标**
@@ -562,6 +602,8 @@ int[][] up;
 - root、ancestor、LCA；
 - 不同 snapshot 中相同 ObjectId 不混用；
 - 当前 snapshot 中非 GroupPlan ObjectId 唯一。
+
+
 
 ### G3.3 建立 IU source/use 索引
 
@@ -592,6 +634,8 @@ record ExpressionUseId(
 - use owner 和 expression path 正确；
 - 未在 snapshot 内生产的 IU 被识别为 free IU；
 - direct source 与递归 base lineage 分开。
+
+
 
 ### G3.4 增加静态 path summary
 
@@ -624,6 +668,8 @@ RECURSIVE_CTE
 - 多 barrier 路径；
 - 返回第一个、最高或最低 barrier 的确定语义。
 
+
+
 ### G3.5 建模 CTE forest 和 remapping
 
 **目标**
@@ -643,6 +689,8 @@ RECURSIVE_CTE
 - producer/consumer ExprId 不混淆；
 - consumer 到 producer 双向 remap；
 - LCA 不跨越伪造的 CTE Anchor 数据流边。
+
+
 
 ### G3.6 增加 shadow verification 开关
 
@@ -671,7 +719,11 @@ verify_indexed_algebra
 
 ---
 
+
+
 ## 9. G4：Indexed Algebra 子查询客户端
+
+
 
 ### G4.1 用 Free-IU 替换子查询相关性整树扫描
 
@@ -692,6 +744,8 @@ verify_indexed_algebra
 - direct use 和 descendant subquery transitive use；
 - barrier 报错文本和类型保持兼容；
 - 分析复杂度随 Plan 深度呈预期趋势。
+
+
 
 ### G4.2 对完整 Apply tree 派生 direct/inherited dependency
 
@@ -719,6 +773,8 @@ inherited =
 - nested Apply chain；
 - source 位于 Join 左/右 child 的情况。
 
+
+
 ### G4.3 增加 holistic subquery custom pass 的 shadow 模式
 
 **建议接入点**
@@ -745,6 +801,8 @@ ApplyToJoin
 - 多层新用例能产生明确的 direct/inherited/attachment 结果；
 - pass-local index 不会被后续 rule 复用为陈旧 snapshot。
 
+
+
 ### G4.4 接管最小的多层 `EXISTS`
 
 **范围**
@@ -768,6 +826,8 @@ ApplyToJoin
 - rewrite 后每个 semantic IU use 都有合法 source；
 - inner inherited IU 不被误连到 inner left；
 - `NOT EXISTS`、NULL 和空输入行为正确。
+
+
 
 ### G4.5 扩展到 `IN/NOT IN` 和 scalar
 
@@ -804,7 +864,11 @@ ApplyToJoin
 
 ---
 
+
+
 ## 10. G5：谓词放置客户端
+
+
 
 ### G5.1 只读计算谓词目标位置
 
@@ -830,6 +894,8 @@ ApplyToJoin
 - 16/32 层 left-deep Join；
 - Alias chain、constant Alias、volatile Alias。
 
+
+
 ### G5.2 启用简单 Inner Join 谓词放置
 
 **目标**
@@ -848,6 +914,8 @@ ApplyToJoin
 - explain shape 等价或更优；
 - TPC-H/TPC-DS 无计划质量回退。
 
+
+
 ### G5.3 逐项支持复杂 barrier
 
 建议分别处理：
@@ -863,7 +931,11 @@ ApplyToJoin
 
 ---
 
+
+
 ## 11. G6：其他独立客户端
+
+
 
 ### G6.1 CTE 列裁剪和谓词映射
 
@@ -885,6 +957,8 @@ usesByConsumer(cteId, producerIu);
 - volatile predicate 不被复制；
 - nested CTE。
 
+
+
 ### G6.2 DPHyper Join Graph
 
 **目标**
@@ -903,6 +977,8 @@ usesByConsumer(cteId, producerIu);
 - 8/16/32/64 relations；
 - Alias 和多表表达式；
 - 每条 edge 的 left/right required node 精确一致。
+
+
 
 ### G6.3 Nullability shadow validator
 
@@ -933,7 +1009,11 @@ nullableAt(iu, use) =
 
 ---
 
+
+
 ## 12. G7：动态 link-cut index
+
+
 
 ### G7.1 动态化准入检查
 
@@ -971,6 +1051,8 @@ path aggregate
 - 检测重复 parent、cycle 和非法 cut；
 - 验证摊还趋势，但 CI 不断言固定耗时。
 
+
+
 ### G7.3 增加 `PlanRewriteTransaction`
 
 **建议协议**
@@ -997,6 +1079,8 @@ commit
 - rule 失败和事务回滚；
 - snapshot epoch 不匹配时拒绝查询。
 
+
+
 ### G7.4 只迁移一个 holistic pass
 
 先让 `IndexedAlgebraSubqueryRewriter` 使用动态索引。确认收益和一致性后，再考虑谓词放置。
@@ -1004,48 +1088,64 @@ commit
 
 ---
 
+
+
 ## 13. 测试矩阵
+
+
 
 ### 13.1 Binder
 
-| 场景 | 必须验证 |
-|---|---|
-| 当前层命中 | 不搜索 outer |
-| immediate parent | provider/consumer QueryBlock 正确 |
-| grandparent / 8 层祖先 | ExprId 和 lexical depth 正确 |
-| nearest shadowing | 不绑定到祖父列 |
-| nearest ambiguous | 直接报错，不回退 |
-| qualified reference | 绑定指定 relation |
-| parent + grandparent | direct/transitive closure 正确 |
-| repeated reference | occurrence 保留、Slot 投影去重 |
-| lambda capture | 不产生 Query Block correlation |
-| struct/variant field | 记录底层 provider IU |
+
+| 场景                   | 必须验证                            |
+| -------------------- | ------------------------------- |
+| 当前层命中                | 不搜索 outer                       |
+| immediate parent     | provider/consumer QueryBlock 正确 |
+| grandparent / 8 层祖先  | ExprId 和 lexical depth 正确       |
+| nearest shadowing    | 不绑定到祖父列                         |
+| nearest ambiguous    | 直接报错，不回退                        |
+| qualified reference  | 绑定指定 relation                   |
+| parent + grandparent | direct/transitive closure 正确    |
+| repeated reference   | occurrence 保留、Slot 投影去重         |
+| lambda capture       | 不产生 Query Block correlation     |
+| struct/variant field | 记录底层 provider IU                |
+
+
+
 
 ### 13.2 Algebra Index
 
-| 场景 | 必须验证 |
-|---|---|
-| Scan/Project/Aggregate | IU source 正确 |
-| pass-through | 不产生新 IU |
-| repeated Slot use | ExpressionUseId 不冲突 |
-| chain/balanced tree | root/ancestor/LCA 正确 |
-| free use | 子树外 source 正确识别 |
-| Outer Join edge | path summary 有方向 |
-| CTE | forest/remap 正确 |
-| snapshot | 相同 ObjectId 不跨 snapshot 污染 |
+
+| 场景                     | 必须验证                       |
+| ---------------------- | -------------------------- |
+| Scan/Project/Aggregate | IU source 正确               |
+| pass-through           | 不产生新 IU                    |
+| repeated Slot use      | ExpressionUseId 不冲突        |
+| chain/balanced tree    | root/ancestor/LCA 正确       |
+| free use               | 子树外 source 正确识别            |
+| Outer Join edge        | path summary 有方向           |
+| CTE                    | forest/remap 正确            |
+| snapshot               | 相同 ObjectId 不跨 snapshot 污染 |
+
+
+
 
 ### 13.3 Subquery
 
-| 场景 | 必须验证 |
-|---|---|
-| nested EXISTS/NOT EXISTS | direct/inherited 和结果正确 |
-| IN/NOT IN | NULL/UNKNOWN 正确 |
-| scalar | 空集、多行、nullable 正确 |
-| aggregate | group key 和空输入正确 |
-| window/topN | partition/row number 语义正确 |
-| set operation | bag/set 语义正确 |
-| outer/full join | preserved side 和 null-safe reconnect 正确 |
-| CTE | producer 只转换一次 |
+
+| 场景                       | 必须验证                                    |
+| ------------------------ | --------------------------------------- |
+| nested EXISTS/NOT EXISTS | direct/inherited 和结果正确                  |
+| IN/NOT IN                | NULL/UNKNOWN 正确                         |
+| scalar                   | 空集、多行、nullable 正确                       |
+| aggregate                | group key 和空输入正确                        |
+| window/topN              | partition/row number 语义正确               |
+| set operation            | bag/set 语义正确                            |
+| outer/full join          | preserved side 和 null-safe reconnect 正确 |
+| CTE                      | producer 只转换一次                          |
+
+
+
 
 ### 13.4 性能趋势
 
@@ -1068,6 +1168,8 @@ predicate placement time
 total FE planning time
 ```
 
+
+
 ## 14. 每个任务的 Definition of Done
 
 一个任务只有在满足以下条件后才能标记完成：
@@ -1082,6 +1184,8 @@ total FE planning time
 - [ ] FE checkstyle 通过；
 - [ ] 相关设计和 feature flag 已记录；
 - [ ] 实际修改以独立、符合仓库规范的 commit 提交。
+
+
 
 ## 15. 当前推荐执行顺序
 
