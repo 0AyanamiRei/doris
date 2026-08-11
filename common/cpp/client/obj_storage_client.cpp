@@ -47,7 +47,7 @@ ObjectStorageUploadResponse ObjStorageClient::create_multipart_upload(
     if (!rate_limit.resp.ok()) {
         return {.resp = std::move(rate_limit.resp)};
     }
-    return backend_->create_multipart_upload(opts);
+    return provider_client_->create_multipart_upload(opts);
 }
 
 ObjectStorageResponse ObjStorageClient::put_object(const ObjectStoragePathOptions& opts,
@@ -56,7 +56,7 @@ ObjectStorageResponse ObjStorageClient::put_object(const ObjectStoragePathOption
     if (!rate_limit.resp.ok()) {
         return rate_limit.resp;
     }
-    return backend_->put_object(opts, stream);
+    return provider_client_->put_object(opts, stream);
 }
 
 ObjectStorageUploadResponse ObjStorageClient::upload_part(const ObjectStoragePathOptions& opts,
@@ -65,7 +65,7 @@ ObjectStorageUploadResponse ObjStorageClient::upload_part(const ObjectStoragePat
     if (!rate_limit.resp.ok()) {
         return {.resp = std::move(rate_limit.resp)};
     }
-    return backend_->upload_part(opts, stream, part_num);
+    return provider_client_->upload_part(opts, stream, part_num);
 }
 
 ObjectStorageResponse ObjStorageClient::complete_multipart_upload(
@@ -75,7 +75,7 @@ ObjectStorageResponse ObjStorageClient::complete_multipart_upload(
     if (!rate_limit.resp.ok()) {
         return rate_limit.resp;
     }
-    return backend_->complete_multipart_upload(opts, completed_parts);
+    return provider_client_->complete_multipart_upload(opts, completed_parts);
 }
 
 ObjectStorageHeadResponse ObjStorageClient::head_object(const ObjectStoragePathOptions& opts) {
@@ -83,7 +83,7 @@ ObjectStorageHeadResponse ObjStorageClient::head_object(const ObjectStoragePathO
     if (!rate_limit.resp.ok()) {
         return {.resp = std::move(rate_limit.resp)};
     }
-    return backend_->head_object(opts);
+    return provider_client_->head_object(opts);
 }
 
 ObjectStorageResponse ObjStorageClient::get_object(const ObjectStoragePathOptions& opts,
@@ -93,7 +93,7 @@ ObjectStorageResponse ObjStorageClient::get_object(const ObjectStoragePathOption
     if (!rate_limit.resp.ok()) {
         return rate_limit.resp;
     }
-    auto response = backend_->get_object(opts, buffer, offset, bytes_read, size_return);
+    auto response = provider_client_->get_object(opts, buffer, offset, bytes_read, size_return);
     if (response.ok()) {
         rate_limit.settle_bytes(*size_return);
     }
@@ -106,7 +106,7 @@ ObjectStorageListPage ObjStorageClient::list_objects(const ObjectStoragePathOpti
     if (!rate_limit.resp.ok()) {
         return {.resp = std::move(rate_limit.resp)};
     }
-    return backend_->list_objects(opts, continuation_token);
+    return provider_client_->list_objects(opts, continuation_token);
 }
 
 ObjectStorageResponse ObjectListIterator::has_next() {
@@ -152,7 +152,8 @@ ObjectStorageListResponse ObjectListIterator::next() {
 
 ObjectStorageResponse ObjStorageClient::delete_objects(const ObjectStoragePathOptions& opts,
                                                        std::vector<std::string> objs) {
-    const auto max_batch_size = std::max<size_t>(1, backend_->capabilities().max_delete_batch);
+    const auto max_batch_size =
+            std::max<size_t>(1, provider_client_->capabilities().max_delete_batch);
     for (size_t begin = 0; begin < objs.size(); begin += max_batch_size) {
         const auto end = std::min(begin + max_batch_size, objs.size());
         auto rate_limit = acquire(ObjStorageRequestType::PUT);
@@ -161,7 +162,7 @@ ObjectStorageResponse ObjStorageClient::delete_objects(const ObjectStoragePathOp
         }
         std::vector<std::string> batch(std::make_move_iterator(objs.begin() + begin),
                                        std::make_move_iterator(objs.begin() + end));
-        auto response = backend_->delete_objects(opts, std::move(batch));
+        auto response = provider_client_->delete_objects(opts, std::move(batch));
         if (!response.ok()) {
             return response;
         }
@@ -174,7 +175,7 @@ ObjectStorageResponse ObjStorageClient::delete_object(const ObjectStoragePathOpt
     if (!rate_limit.resp.ok()) {
         return rate_limit.resp;
     }
-    return backend_->delete_object(opts);
+    return provider_client_->delete_object(opts);
 }
 
 ObjectStorageResponse ObjStorageClient::delete_objects_recursively(
@@ -183,7 +184,7 @@ ObjectStorageResponse ObjStorageClient::delete_objects_recursively(
     if (list_opts.prefix.empty()) {
         list_opts.prefix = list_opts.key;
     }
-    auto delete_batch_size = std::max<size_t>(1, backend_->capabilities().max_delete_batch);
+    auto delete_batch_size = std::max<size_t>(1, provider_client_->capabilities().max_delete_batch);
     TEST_SYNC_POINT_CALLBACK("ObjStorageClient::delete_objects_recursively_", &delete_batch_size);
     delete_batch_size = std::max<size_t>(1, delete_batch_size);
     const auto max_tasks_per_batch = std::max<size_t>(1, options.max_tasks_per_batch);
@@ -199,14 +200,15 @@ ObjectStorageResponse ObjStorageClient::delete_objects_recursively(
         return options.executor ? options.executor.wait() : ObjectStorageResponse::OK();
     };
     auto submit_delete_task = [&]() {
-        ObjStorageDeleteTask task = [backend = backend_, rate_limit_policy = rate_limit_policy_,
-                                     bucket = opts.bucket, batch = std::move(keys)]() mutable {
+        ObjStorageDeleteTask task = [provider_client = provider_client_,
+                                     rate_limit_policy = rate_limit_policy_, bucket = opts.bucket,
+                                     batch = std::move(keys)]() mutable {
             auto rate_limit = acquire_rate_limit(rate_limit_policy, ObjStorageRequestType::PUT);
             if (!rate_limit.resp.ok()) {
                 return rate_limit.resp;
             }
-            return backend->delete_objects(ObjectStoragePathOptions {.bucket = std::move(bucket)},
-                                           std::move(batch));
+            return provider_client->delete_objects(
+                    ObjectStoragePathOptions {.bucket = std::move(bucket)}, std::move(batch));
         };
         keys.clear();
         keys.reserve(delete_batch_size);
@@ -272,7 +274,7 @@ ObjectStorageResponse ObjStorageClient::delete_objects_recursively(
 
 std::string ObjStorageClient::generate_presigned_url(const ObjectStoragePathOptions& opts,
                                                      int64_t expiration_secs) {
-    return backend_->generate_presigned_url(opts, expiration_secs);
+    return provider_client_->generate_presigned_url(opts, expiration_secs);
 }
 
 ObjectStorageResponse ObjStorageClient::get_life_cycle(const std::string& bucket,
@@ -281,7 +283,7 @@ ObjectStorageResponse ObjStorageClient::get_life_cycle(const std::string& bucket
     if (!rate_limit.resp.ok()) {
         return rate_limit.resp;
     }
-    return backend_->get_life_cycle(bucket, expiration_days);
+    return provider_client_->get_life_cycle(bucket, expiration_days);
 }
 
 ObjectStorageResponse ObjStorageClient::check_versioning(const std::string& bucket) {
@@ -289,7 +291,7 @@ ObjectStorageResponse ObjStorageClient::check_versioning(const std::string& buck
     if (!rate_limit.resp.ok()) {
         return rate_limit.resp;
     }
-    return backend_->check_versioning(bucket);
+    return provider_client_->check_versioning(bucket);
 }
 
 ObjectStorageResponse ObjStorageClient::abort_multipart_upload(const ObjectStoragePathOptions& opts,
@@ -298,7 +300,7 @@ ObjectStorageResponse ObjStorageClient::abort_multipart_upload(const ObjectStora
     if (!rate_limit.resp.ok()) {
         return rate_limit.resp;
     }
-    return backend_->abort_multipart_upload(opts, upload_id);
+    return provider_client_->abort_multipart_upload(opts, upload_id);
 }
 
 } // namespace doris

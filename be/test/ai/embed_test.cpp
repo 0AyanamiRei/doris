@@ -47,7 +47,7 @@ private:
     std::string _content_type;
 };
 
-class MockEmbedObjStorageBackend : public io::ObjStorageBackend {
+class MockEmbedObjStorageProviderClient : public io::ObjStorageProviderClient {
 public:
     io::ObjectStorageUploadResponse create_multipart_upload(
             const io::ObjectStoragePathOptions& /*opts*/) override {
@@ -612,7 +612,7 @@ TEST(EMBED_TEST, embed_function_multimodal_s3_presigned_url) {
                                query_ctx.get());
     auto ctx = FunctionContext::create_context(&runtime_state, {}, {});
 
-    auto mock_client = std::make_shared<MockEmbedObjStorageBackend>();
+    auto mock_client = std::make_shared<MockEmbedObjStorageProviderClient>();
     S3ClientFactory::instance().set_client_creator_for_test(
             [mock_client](const S3ClientConf& conf) {
                 mock_client->last_conf = conf;

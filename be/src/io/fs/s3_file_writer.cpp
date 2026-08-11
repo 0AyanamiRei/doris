@@ -30,7 +30,7 @@
 
 #include "common/config.h"
 #include "common/status.h"
-#include "cpp/client/s3_obj_storage_backend.h"
+#include "cpp/client/s3_obj_storage_client.h"
 #include "cpp/sync_point.h"
 #include "io/cache/block_file_cache.h"
 #include "io/cache/block_file_cache_factory.h"

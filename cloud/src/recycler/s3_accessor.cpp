@@ -45,10 +45,10 @@
 #include "cpp/client/auth/aws_credential_factory.h"
 #ifdef USE_AZURE
 #include "cpp/client/auth/azure_auth_factory.h"
-#include "cpp/client/azure_obj_storage_backend.h"
+#include "cpp/client/azure_obj_storage_client.h"
 #endif
 #include "cpp/aws_logger.h"
-#include "cpp/client/s3_obj_storage_backend.h"
+#include "cpp/client/s3_obj_storage_client.h"
 #include "cpp/obj_retry_strategy.h"
 #include "cpp/sync_point.h"
 #include "cpp/token_bucket_rate_limiter.h"
@@ -398,16 +398,16 @@ int S3Accessor::init() {
         }
         // uri format for debug: ${scheme}://${ak}.blob.core.windows.net/${bucket}/${prefix}
         uri_ = normalize_http_uri(uri_ + '/' + conf_.prefix);
-        auto backend =
-                std::make_shared<AzureObjStorageBackend>(std::move(built.container_client),
-                                                         ObjectClientConfig {
-                                                                 .endpoint = conf_.endpoint,
-                                                                 .ak = conf_.ak,
-                                                                 .sk = conf_.sk,
-                                                         },
-                                                         std::move(built.shared_key_credential));
+        auto provider_client =
+                std::make_shared<AzureObjStorageClient>(std::move(built.container_client),
+                                                        ObjectClientConfig {
+                                                                .endpoint = conf_.endpoint,
+                                                                .ak = conf_.ak,
+                                                                .sk = conf_.sk,
+                                                        },
+                                                        std::move(built.shared_key_credential));
         obj_client_ = std::make_shared<ObjStorageClient>(
-                std::move(backend), std::make_shared<RecyclerObjStorageRateLimitPolicy>());
+                std::move(provider_client), std::make_shared<RecyclerObjStorageRateLimitPolicy>());
         return 0;
 #else
         LOG_FATAL("BE is not compiled with azure support, export BUILD_AZURE=ON before building");
@@ -457,14 +457,14 @@ int S3Accessor::init() {
                 std::move(credentials.provider), std::move(aws_config),
                 Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never,
                 conf_.use_virtual_addressing /* useVirtualAddressing */);
-        auto backend = std::make_shared<S3ObjStorageBackend>(std::move(s3_client),
-                                                             ObjectClientConfig {
-                                                                     .endpoint = conf_.endpoint,
-                                                                     .ak = conf_.ak,
-                                                                     .sk = conf_.sk,
-                                                             });
+        auto provider_client = std::make_shared<S3ObjStorageClient>(
+                std::move(s3_client), ObjectClientConfig {
+                                              .endpoint = conf_.endpoint,
+                                              .ak = conf_.ak,
+                                              .sk = conf_.sk,
+                                      });
         obj_client_ = std::make_shared<ObjStorageClient>(
-                std::move(backend), std::make_shared<RecyclerObjStorageRateLimitPolicy>());
+                std::move(provider_client), std::make_shared<RecyclerObjStorageRateLimitPolicy>());
         return 0;
     }
     }

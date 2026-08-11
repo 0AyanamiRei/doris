@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "s3_obj_storage_backend.h"
+#include "s3_obj_storage_client.h"
 
 #include <cpp/client/obj_storage_client.h>
 #include <gen_cpp/Status_types.h>
@@ -81,7 +81,7 @@ ObjectStorageStatus s3fs_error(const Aws::S3::S3Error& err, std::string_view msg
     }
 }
 
-ObjectStorageUploadResponse S3ObjStorageBackend::create_multipart_upload(
+ObjectStorageUploadResponse S3ObjStorageClient::create_multipart_upload(
         const ObjectStoragePathOptions& opts) {
     CreateMultipartUploadRequest request;
     request.WithBucket(opts.bucket).WithKey(opts.key);
@@ -121,8 +121,8 @@ ObjectStorageUploadResponse S3ObjStorageBackend::create_multipart_upload(
                                         .upload_id {outcome.GetResult().GetUploadId()}};
 }
 
-ObjectStorageResponse S3ObjStorageBackend::put_object(const ObjectStoragePathOptions& opts,
-                                                      std::string_view stream) {
+ObjectStorageResponse S3ObjStorageClient::put_object(const ObjectStoragePathOptions& opts,
+                                                     std::string_view stream) {
     Aws::S3::Model::PutObjectRequest request;
     request.WithBucket(opts.bucket).WithKey(opts.key);
     auto string_view_stream = std::make_shared<StringViewStream>(stream.data(), stream.size());
@@ -161,9 +161,8 @@ ObjectStorageResponse S3ObjStorageBackend::put_object(const ObjectStoragePathOpt
     return ObjectStorageResponse::OK();
 }
 
-ObjectStorageUploadResponse S3ObjStorageBackend::upload_part(const ObjectStoragePathOptions& opts,
-                                                             std::string_view stream,
-                                                             int part_num) {
+ObjectStorageUploadResponse S3ObjStorageClient::upload_part(const ObjectStoragePathOptions& opts,
+                                                            std::string_view stream, int part_num) {
     UploadPartRequest request;
     request.WithBucket(opts.bucket)
             .WithKey(opts.key)
@@ -214,7 +213,7 @@ ObjectStorageUploadResponse S3ObjStorageBackend::upload_part(const ObjectStorage
                                         .etag = outcome.GetResult().GetETag()};
 }
 
-ObjectStorageResponse S3ObjStorageBackend::complete_multipart_upload(
+ObjectStorageResponse S3ObjStorageClient::complete_multipart_upload(
         const ObjectStoragePathOptions& opts,
         const std::vector<ObjectCompleteMultiPart>& completed_parts) {
     CompleteMultipartUploadRequest request;
@@ -265,7 +264,7 @@ ObjectStorageResponse S3ObjStorageBackend::complete_multipart_upload(
     return ObjectStorageResponse::OK();
 }
 
-ObjectStorageHeadResponse S3ObjStorageBackend::head_object(const ObjectStoragePathOptions& opts) {
+ObjectStorageHeadResponse S3ObjStorageClient::head_object(const ObjectStoragePathOptions& opts) {
     Aws::S3::Model::HeadObjectRequest request;
     request.WithBucket(opts.bucket).WithKey(opts.key);
 
@@ -296,9 +295,9 @@ ObjectStorageHeadResponse S3ObjStorageBackend::head_object(const ObjectStoragePa
     }
 }
 
-ObjectStorageResponse S3ObjStorageBackend::get_object(const ObjectStoragePathOptions& opts,
-                                                      void* buffer, size_t offset,
-                                                      size_t bytes_read, size_t* size_return) {
+ObjectStorageResponse S3ObjStorageClient::get_object(const ObjectStoragePathOptions& opts,
+                                                     void* buffer, size_t offset, size_t bytes_read,
+                                                     size_t* size_return) {
     Aws::S3::Model::GetObjectRequest request;
     request.WithBucket(opts.bucket).WithKey(opts.key);
     request.SetRange(fmt::format("bytes={}-{}", offset, offset + bytes_read - 1));
@@ -331,15 +330,15 @@ ObjectStorageResponse S3ObjStorageBackend::get_object(const ObjectStoragePathOpt
     return ObjectStorageResponse::OK();
 }
 
-ObjectStorageListPage S3ObjStorageBackend::list_objects(const ObjectStoragePathOptions& opts,
-                                                        std::string_view continuation_token) {
+ObjectStorageListPage S3ObjStorageClient::list_objects(const ObjectStoragePathOptions& opts,
+                                                       std::string_view continuation_token) {
     const auto& prefix = opts.prefix.empty() ? opts.key : opts.prefix;
     Aws::S3::Model::ListObjectsV2Request request;
     request.WithBucket(opts.bucket).WithPrefix(prefix).WithMaxKeys(OBJECT_LIST_PAGE_SIZE);
     if (!continuation_token.empty()) {
         request.SetContinuationToken(std::string(continuation_token));
     }
-    TEST_SYNC_POINT_CALLBACK("S3ObjStorageBackend::list_objects", &request);
+    TEST_SYNC_POINT_CALLBACK("S3ObjStorageClient::list_objects", &request);
 
     auto outcome = [&]() {
         client_bvar::ScopedLatency scoped_latency(client_bvar::s3_list_latency);
@@ -407,8 +406,8 @@ ObjectStorageListPage S3ObjStorageBackend::list_objects(const ObjectStoragePathO
     return page;
 }
 
-ObjectStorageResponse S3ObjStorageBackend::delete_objects(const ObjectStoragePathOptions& opts,
-                                                          std::vector<std::string> objs) {
+ObjectStorageResponse S3ObjStorageClient::delete_objects(const ObjectStoragePathOptions& opts,
+                                                         std::vector<std::string> objs) {
     size_t max_delete_batch = 1000;
     TEST_SYNC_POINT_CALLBACK("S3ObjClient::delete_objects", &max_delete_batch);
     TEST_SYNC_POINT_CALLBACK("S3ObjStorageClient::delete_objects", &max_delete_batch);
@@ -478,7 +477,7 @@ ObjectStorageResponse S3ObjStorageBackend::delete_objects(const ObjectStoragePat
     return ObjectStorageResponse::OK();
 }
 
-ObjectStorageResponse S3ObjStorageBackend::delete_object(const ObjectStoragePathOptions& opts) {
+ObjectStorageResponse S3ObjStorageClient::delete_object(const ObjectStoragePathOptions& opts) {
     Aws::S3::Model::DeleteObjectRequest request;
     request.WithBucket(opts.bucket).WithKey(opts.key);
 
@@ -507,13 +506,13 @@ ObjectStorageResponse S3ObjStorageBackend::delete_object(const ObjectStoragePath
             .request_id = outcome.GetError().GetRequestId()};
 }
 
-std::string S3ObjStorageBackend::generate_presigned_url(const ObjectStoragePathOptions& opts,
-                                                        int64_t expiration_secs) {
+std::string S3ObjStorageClient::generate_presigned_url(const ObjectStoragePathOptions& opts,
+                                                       int64_t expiration_secs) {
     return _client->GeneratePresignedUrl(opts.bucket, opts.key, Aws::Http::HttpMethod::HTTP_GET,
                                          expiration_secs);
 }
 
-ObjectStorageResponse S3ObjStorageBackend::check_versioning(const std::string& bucket) {
+ObjectStorageResponse S3ObjStorageClient::check_versioning(const std::string& bucket) {
     Aws::S3::Model::GetBucketVersioningRequest request;
     request.SetBucket(bucket);
 
@@ -543,7 +542,7 @@ ObjectStorageResponse S3ObjStorageBackend::check_versioning(const std::string& b
     return ObjectStorageResponse::OK();
 }
 
-ObjectStorageResponse S3ObjStorageBackend::abort_multipart_upload(
+ObjectStorageResponse S3ObjStorageClient::abort_multipart_upload(
         const ObjectStoragePathOptions& opts, const std::string& upload_id) {
     Aws::S3::Model::AbortMultipartUploadRequest request;
     request.WithBucket(opts.bucket).WithKey(opts.key).WithUploadId(upload_id);
@@ -571,8 +570,8 @@ ObjectStorageResponse S3ObjStorageBackend::abort_multipart_upload(
     return ObjectStorageResponse::OK();
 }
 
-ObjectStorageResponse S3ObjStorageBackend::get_life_cycle(const std::string& bucket,
-                                                          int64_t* expiration_days) {
+ObjectStorageResponse S3ObjStorageClient::get_life_cycle(const std::string& bucket,
+                                                         int64_t* expiration_days) {
     Aws::S3::Model::GetBucketLifecycleConfigurationRequest request;
     request.SetBucket(bucket);
 

@@ -202,9 +202,9 @@ void reset_mock_s3_store() {
     store.objects.clear();
 }
 
-class MockObjStorageBackend : public ObjStorageBackend {
+class MockObjStorageProviderClient : public ObjStorageProviderClient {
 public:
-    explicit MockObjStorageBackend(MockS3Store* store) : _store(store) {}
+    explicit MockObjStorageProviderClient(MockS3Store* store) : _store(store) {}
 
     ObjectStorageUploadResponse create_multipart_upload(
             const ObjectStoragePathOptions& opts) override {
@@ -353,11 +353,11 @@ private:
     MockS3Store* _store;
 };
 
-std::shared_ptr<MockObjStorageBackend> g_mock_obj_backend;
+std::shared_ptr<MockObjStorageProviderClient> g_mock_obj_provider_client;
 
 void install_mock_environment() {
-    g_mock_obj_backend = std::make_shared<MockObjStorageBackend>(&mock_s3_store());
-    auto client = std::make_shared<ObjStorageClient>(g_mock_obj_backend);
+    g_mock_obj_provider_client = std::make_shared<MockObjStorageProviderClient>(&mock_s3_store());
+    auto client = std::make_shared<ObjStorageClient>(g_mock_obj_provider_client);
     S3ClientFactory::instance().set_client_creator_for_test(
             [client](const S3ClientConf&) { return client; });
 
@@ -372,7 +372,7 @@ void install_mock_environment() {
 
 void remove_mock_environment() {
     S3ClientFactory::instance().clear_client_creator_for_test();
-    g_mock_obj_backend.reset();
+    g_mock_obj_provider_client.reset();
 
     auto* sp = SyncPoint::get_instance();
     sp->clear_call_back("PackedFileManager::update_meta_service");

@@ -167,8 +167,9 @@ public:
 #endif
 
 private:
-    Result<std::shared_ptr<io::ObjStorageBackend>> _create_s3_backend(const S3ClientConf& s3_conf);
-    Result<std::shared_ptr<io::ObjStorageBackend>> _create_azure_backend(
+    Result<std::shared_ptr<io::ObjStorageProviderClient>> _create_s3_client(
+            const S3ClientConf& s3_conf);
+    Result<std::shared_ptr<io::ObjStorageProviderClient>> _create_azure_client(
             const S3ClientConf& s3_conf);
     S3ClientFactory();
 

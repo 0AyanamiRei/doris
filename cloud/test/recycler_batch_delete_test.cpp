@@ -32,10 +32,10 @@
 namespace doris {
 namespace {
 
-class MockObjStorageBackend final : public ObjStorageBackend {
+class MockObjStorageProviderClient final : public ObjStorageProviderClient {
 public:
-    MockObjStorageBackend(std::vector<ObjectMeta> objects, size_t batch_size,
-                          int iterator_fail_after = -1)
+    MockObjStorageProviderClient(std::vector<ObjectMeta> objects, size_t batch_size,
+                                 int iterator_fail_after = -1)
             : objects_(std::move(objects)),
               batch_size_(batch_size),
               iterator_fail_after_(iterator_fail_after) {}
@@ -166,21 +166,22 @@ std::vector<ObjectMeta> make_objects(size_t count) {
 }
 
 TEST(RecyclerBatchDeleteTest, UsesProviderBatchCapability) {
-    auto backend = std::make_shared<MockObjStorageBackend>(make_objects(10), 3);
-    ObjStorageClient client(backend);
+    auto provider_client = std::make_shared<MockObjStorageProviderClient>(make_objects(10), 3);
+    ObjStorageClient client(provider_client);
     auto response = client.delete_objects_recursively({.bucket = "bucket", .prefix = "test_key_"});
 
     EXPECT_TRUE(response.ok());
-    EXPECT_EQ(backend->delete_calls(), 4);
-    EXPECT_EQ(backend->deleted_keys().size(), 10);
+    EXPECT_EQ(provider_client->delete_calls(), 4);
+    EXPECT_EQ(provider_client->deleted_keys().size(), 10);
 }
 
 TEST(RecyclerBatchDeleteTest, CountsEveryDeleteObjectsBatch) {
-    auto backend = std::make_shared<MockObjStorageBackend>(std::vector<ObjectMeta> {}, 3);
+    auto provider_client =
+            std::make_shared<MockObjStorageProviderClient>(std::vector<ObjectMeta> {}, 3);
     size_t get_requests = 0;
     size_t put_requests = 0;
-    ObjStorageClient client(
-            backend, std::make_shared<CountingRateLimitPolicy>(&get_requests, &put_requests));
+    ObjStorageClient client(provider_client, std::make_shared<CountingRateLimitPolicy>(
+                                                     &get_requests, &put_requests));
 
     std::vector<std::string> keys(7, "key");
     auto response = client.delete_objects({.bucket = "bucket"}, std::move(keys));
@@ -188,22 +189,22 @@ TEST(RecyclerBatchDeleteTest, CountsEveryDeleteObjectsBatch) {
     EXPECT_TRUE(response.ok());
     EXPECT_EQ(get_requests, 0);
     EXPECT_EQ(put_requests, 3);
-    EXPECT_EQ(backend->delete_calls(), 3);
+    EXPECT_EQ(provider_client->delete_calls(), 3);
 }
 
 TEST(RecyclerBatchDeleteTest, CountsEveryRecursiveListAndDeleteRequest) {
-    auto backend = std::make_shared<MockObjStorageBackend>(make_objects(5), 2);
+    auto provider_client = std::make_shared<MockObjStorageProviderClient>(make_objects(5), 2);
     size_t get_requests = 0;
     size_t put_requests = 0;
-    ObjStorageClient client(
-            backend, std::make_shared<CountingRateLimitPolicy>(&get_requests, &put_requests));
+    ObjStorageClient client(provider_client, std::make_shared<CountingRateLimitPolicy>(
+                                                     &get_requests, &put_requests));
 
     auto response = client.delete_objects_recursively({.bucket = "bucket", .prefix = "test_key_"});
 
     EXPECT_TRUE(response.ok());
     EXPECT_EQ(get_requests, 5);
     EXPECT_EQ(put_requests, 3);
-    EXPECT_EQ(backend->delete_calls(), 3);
+    EXPECT_EQ(provider_client->delete_calls(), 3);
 }
 
 TEST(RecyclerBatchDeleteTest, ProductionExecutorRunsMultipleTaskBatches) {
@@ -220,25 +221,25 @@ TEST(RecyclerBatchDeleteTest, ProductionExecutorRunsMultipleTaskBatches) {
         return production_wait();
     };
 
-    auto backend = std::make_shared<MockObjStorageBackend>(make_objects(10), 2);
-    ObjStorageClient client(backend);
+    auto provider_client = std::make_shared<MockObjStorageProviderClient>(make_objects(10), 2);
+    ObjStorageClient client(provider_client);
     auto response =
             client.delete_objects_recursively({.bucket = "bucket", .prefix = "test_key_"}, options);
 
     EXPECT_TRUE(response.ok());
     EXPECT_EQ(executor_batches, 3);
-    EXPECT_EQ(backend->delete_calls(), 5);
-    EXPECT_EQ(backend->deleted_keys().size(), 10);
+    EXPECT_EQ(provider_client->delete_calls(), 5);
+    EXPECT_EQ(provider_client->deleted_keys().size(), 10);
     EXPECT_EQ(pool->stop(), 0);
 }
 
 TEST(RecyclerBatchDeleteTest, StreamsDeleteTasksWhileListing) {
-    auto backend = std::make_shared<MockObjStorageBackend>(make_objects(5), 1);
-    ObjStorageClient client(backend);
+    auto provider_client = std::make_shared<MockObjStorageProviderClient>(make_objects(5), 1);
+    ObjStorageClient client(provider_client);
     std::vector<int> list_calls_at_submit;
     RecursiveDeleteOptions options {.max_tasks_per_batch = 1000};
-    options.executor.submit = [backend, &list_calls_at_submit](ObjStorageDeleteTask task) {
-        list_calls_at_submit.push_back(backend->list_calls());
+    options.executor.submit = [provider_client, &list_calls_at_submit](ObjStorageDeleteTask task) {
+        list_calls_at_submit.push_back(provider_client->list_calls());
         return task();
     };
     options.executor.wait = [] { return ObjectStorageResponse::OK(); };
@@ -249,8 +250,8 @@ TEST(RecyclerBatchDeleteTest, StreamsDeleteTasksWhileListing) {
     EXPECT_TRUE(response.ok());
     ASSERT_EQ(list_calls_at_submit.size(), 5);
     EXPECT_EQ(list_calls_at_submit.front(), 1);
-    EXPECT_EQ(backend->list_calls(), 5);
-    EXPECT_EQ(backend->deleted_keys().size(), 5);
+    EXPECT_EQ(provider_client->list_calls(), 5);
+    EXPECT_EQ(provider_client->deleted_keys().size(), 5);
 }
 
 TEST(RecyclerBatchDeleteTest, ProductionExecutorPropagatesCancellation) {
@@ -258,16 +259,16 @@ TEST(RecyclerBatchDeleteTest, ProductionExecutorPropagatesCancellation) {
     auto pool = std::make_shared<cloud::SimpleThreadPool>(1, "recursive_delete_failure_test");
     ASSERT_EQ(pool->start(), 0);
 
-    auto backend = std::make_shared<MockObjStorageBackend>(make_objects(6), 1);
-    backend->fail_delete();
-    ObjStorageClient client(backend);
+    auto provider_client = std::make_shared<MockObjStorageProviderClient>(make_objects(6), 1);
+    provider_client->fail_delete();
+    ObjStorageClient client(provider_client);
     auto response = client.delete_objects_recursively(
             {.bucket = "bucket", .prefix = "test_key_"},
             TestS3Accessor::make_recursive_delete_options(0, pool));
 
     EXPECT_FALSE(response.ok());
     EXPECT_EQ(response.status.msg, "object storage batch deletion did not finish");
-    EXPECT_EQ(backend->delete_calls(), 1);
+    EXPECT_EQ(provider_client->delete_calls(), 1);
     EXPECT_EQ(pool->stop(), 0);
 }
 
@@ -286,26 +287,28 @@ TEST(RecyclerBatchDeleteTest, InvalidMaxTasksPerBatchUsesDefault) {
 }
 
 TEST(RecyclerBatchDeleteTest, FiltersByExpirationTime) {
-    auto backend = std::make_shared<MockObjStorageBackend>(make_objects(10), 1000);
-    ObjStorageClient client(backend);
+    auto provider_client = std::make_shared<MockObjStorageProviderClient>(make_objects(10), 1000);
+    ObjStorageClient client(provider_client);
     auto response = client.delete_objects_recursively({.bucket = "bucket", .prefix = "test_key_"},
                                                       {.expiration_time = 4});
 
     EXPECT_TRUE(response.ok());
-    ASSERT_EQ(backend->deleted_keys().size(), 5);
-    EXPECT_EQ(backend->deleted_keys().back(), "test_key_4");
+    ASSERT_EQ(provider_client->deleted_keys().size(), 5);
+    EXPECT_EQ(provider_client->deleted_keys().back(), "test_key_4");
 }
 
 TEST(RecyclerBatchDeleteTest, PropagatesListAndDeleteFailures) {
-    auto list_failure_backend = std::make_shared<MockObjStorageBackend>(make_objects(10), 3, 2);
-    ObjStorageClient list_failure(list_failure_backend);
+    auto list_failure_provider_client =
+            std::make_shared<MockObjStorageProviderClient>(make_objects(10), 3, 2);
+    ObjStorageClient list_failure(list_failure_provider_client);
     EXPECT_FALSE(
             list_failure.delete_objects_recursively({.bucket = "bucket", .prefix = "test_key_"})
                     .ok());
 
-    auto delete_failure_backend = std::make_shared<MockObjStorageBackend>(make_objects(3), 3);
-    delete_failure_backend->fail_delete();
-    ObjStorageClient delete_failure(delete_failure_backend);
+    auto delete_failure_provider_client =
+            std::make_shared<MockObjStorageProviderClient>(make_objects(3), 3);
+    delete_failure_provider_client->fail_delete();
+    ObjStorageClient delete_failure(delete_failure_provider_client);
     EXPECT_FALSE(
             delete_failure.delete_objects_recursively({.bucket = "bucket", .prefix = "test_key_"})
                     .ok());

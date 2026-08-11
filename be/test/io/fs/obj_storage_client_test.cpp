@@ -27,7 +27,7 @@
 namespace doris {
 namespace {
 
-class FakeObjStorageBackend final : public ObjStorageBackend {
+class FakeObjStorageProviderClient final : public ObjStorageProviderClient {
 public:
     ObjectStorageUploadResponse create_multipart_upload(const ObjectStoragePathOptions&) override {
         ++calls;
@@ -127,10 +127,10 @@ public:
     mutable std::vector<size_t> settled_bytes;
 };
 
-TEST(ObjStorageClientTest, AppliesAdmissionPolicyToEveryBackendRequest) {
-    auto backend = std::make_shared<FakeObjStorageBackend>();
+TEST(ObjStorageClientTest, AppliesAdmissionPolicyToEveryProviderRequest) {
+    auto provider_client = std::make_shared<FakeObjStorageProviderClient>();
     auto policy = std::make_shared<RecordingRateLimitPolicy>();
-    ObjStorageClient client(backend, policy);
+    ObjStorageClient client(provider_client, policy);
     ObjectStoragePathOptions opts {.bucket = "bucket", .key = "key"};
 
     EXPECT_TRUE(client.create_multipart_upload(opts).resp.ok());
@@ -167,22 +167,22 @@ TEST(ObjStorageClientTest, AppliesAdmissionPolicyToEveryBackendRequest) {
                 << "request index " << i;
     }
     EXPECT_EQ(policy->settled_bytes, std::vector<size_t>({4}));
-    EXPECT_EQ(backend->calls, 13);
-    EXPECT_EQ(backend->presigned_url_calls, 1);
+    EXPECT_EQ(provider_client->calls, 13);
+    EXPECT_EQ(provider_client->presigned_url_calls, 1);
 }
 
-TEST(ObjStorageClientTest, RejectsBeforeDispatchingToBackend) {
-    auto backend = std::make_shared<FakeObjStorageBackend>();
+TEST(ObjStorageClientTest, RejectsBeforeDispatchingToProviderClient) {
+    auto provider_client = std::make_shared<FakeObjStorageProviderClient>();
     auto policy = std::make_shared<RecordingRateLimitPolicy>();
     policy->reject = true;
-    ObjStorageClient client(backend, policy);
+    ObjStorageClient client(provider_client, policy);
     ObjectStoragePathOptions opts {.bucket = "bucket", .key = "key"};
 
     auto put_response = client.put_object(opts, "abc");
     EXPECT_EQ(put_response.status.code, static_cast<int>(TStatusCode::LIMIT_REACH));
     auto head_response = client.head_object(opts);
     EXPECT_EQ(head_response.resp.status.code, static_cast<int>(TStatusCode::LIMIT_REACH));
-    EXPECT_EQ(backend->calls, 0);
+    EXPECT_EQ(provider_client->calls, 0);
     EXPECT_EQ(policy->requests.size(), 2);
 }
 

@@ -25,7 +25,7 @@
 
 #include "common/config.h"
 #include "common/logging.h"
-#include "cpp/client/s3_obj_storage_backend.h"
+#include "cpp/client/s3_obj_storage_client.h"
 #include "cpp/sync_point.h"
 
 using namespace doris;
@@ -66,10 +66,10 @@ public:
 };
 
 TEST_F(S3AccessorMockTest, list_objects_compatibility) {
-    // If storage only supports ListObjectsV1, s3_obj_storage_backend.list_objects
+    // If storage only supports ListObjectsV1, s3_obj_storage_client.list_objects
     // should return an error.
     auto mock_s3_client = std::make_shared<MockS3Client>();
-    S3ObjStorageBackend s3_obj_client(mock_s3_client, {.endpoint = "dummy-endpoint"});
+    S3ObjStorageClient s3_obj_client(mock_s3_client, {.endpoint = "dummy-endpoint"});
 
     ListObjectsV2Result result;
     result.SetIsTruncated(true);

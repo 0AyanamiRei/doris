@@ -47,11 +47,11 @@
 #include "cpp/client/auth/aws_credential_factory.h"
 #ifdef USE_AZURE
 #include "cpp/client/auth/azure_auth_factory.h"
-#include "cpp/client/azure_obj_storage_backend.h"
+#include "cpp/client/azure_obj_storage_client.h"
 #endif
 #include "cloud/config.h"
 #include "cpp/aws_logger.h"
-#include "cpp/client/s3_obj_storage_backend.h"
+#include "cpp/client/s3_obj_storage_client.h"
 #include "cpp/obj_retry_strategy.h"
 #include "cpp/sync_point.h"
 #include "cpp/util.h"
@@ -241,18 +241,18 @@ Result<std::shared_ptr<io::ObjStorageClient>> S3ClientFactory::create(const S3Cl
         }
     }
 
-    auto backend_result = (s3_conf.provider == io::ObjStorageType::AZURE)
-                                  ? _create_azure_backend(s3_conf)
-                                  : _create_s3_backend(s3_conf);
-    if (!backend_result.has_value()) {
-        return ResultError(std::move(backend_result).error());
+    auto provider_client_result = (s3_conf.provider == io::ObjStorageType::AZURE)
+                                          ? _create_azure_client(s3_conf)
+                                          : _create_s3_client(s3_conf);
+    if (!provider_client_result.has_value()) {
+        return ResultError(std::move(provider_client_result).error());
     }
-    auto backend = std::move(backend_result).value();
+    auto provider_client = std::move(provider_client_result).value();
     std::shared_ptr<const ObjStorageRateLimitPolicy> rate_limit_policy;
     if (!config::is_cloud_mode() || s3_conf.is_internal_bucket) {
         rate_limit_policy = std::make_shared<BeObjStorageRateLimitPolicy>();
     }
-    auto obj_client = std::make_shared<io::ObjStorageClient>(std::move(backend),
+    auto obj_client = std::make_shared<io::ObjStorageClient>(std::move(provider_client),
                                                              std::move(rate_limit_policy));
 
     {
@@ -275,7 +275,7 @@ void S3ClientFactory::clear_client_creator_for_test() {
 }
 #endif
 
-Result<std::shared_ptr<io::ObjStorageBackend>> S3ClientFactory::_create_azure_backend(
+Result<std::shared_ptr<io::ObjStorageProviderClient>> S3ClientFactory::_create_azure_client(
         const S3ClientConf& s3_conf) {
 #ifdef USE_AZURE
     const std::string container_name = s3_conf.bucket;
@@ -314,7 +314,7 @@ Result<std::shared_ptr<io::ObjStorageBackend>> S3ClientFactory::_create_azure_ba
                 Status::InvalidArgument("failed to create Azure client: {}", built.error));
     }
     LOG_INFO("create one azure client with {}", s3_conf.to_string());
-    return std::make_shared<io::AzureObjStorageBackend>(
+    return std::make_shared<io::AzureObjStorageClient>(
             std::move(built.container_client),
             ObjectClientConfig {
                     .endpoint = s3_conf.endpoint,
@@ -349,12 +349,12 @@ AwsCredentialResult S3ClientFactory::create_aws_credentials_provider(const S3Cli
     });
 }
 
-Result<std::shared_ptr<io::ObjStorageBackend>> S3ClientFactory::_create_s3_backend(
+Result<std::shared_ptr<io::ObjStorageProviderClient>> S3ClientFactory::_create_s3_client(
         const S3ClientConf& s3_conf) {
     TEST_SYNC_POINT_RETURN_WITH_VALUE(
             "s3_client_factory::create",
-            std::make_shared<io::S3ObjStorageBackend>(std::make_shared<Aws::S3::S3Client>(),
-                                                      ObjectClientConfig {}));
+            std::make_shared<io::S3ObjStorageClient>(std::make_shared<Aws::S3::S3Client>(),
+                                                     ObjectClientConfig {}));
     Aws::Client::ClientConfiguration aws_config = S3ClientFactory::getClientConfiguration();
     if (s3_conf.need_override_endpoint) {
         aws_config.endpointOverride = s3_conf.endpoint;
@@ -399,14 +399,14 @@ Result<std::shared_ptr<io::ObjStorageBackend>> S3ClientFactory::_create_s3_backe
             Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never,
             s3_conf.use_virtual_addressing);
 
-    auto backend = std::make_shared<io::S3ObjStorageBackend>(std::move(new_client),
-                                                             ObjectClientConfig {
-                                                                     .endpoint = s3_conf.endpoint,
-                                                                     .ak = s3_conf.ak,
-                                                                     .sk = s3_conf.sk,
-                                                             });
+    auto provider_client = std::make_shared<io::S3ObjStorageClient>(
+            std::move(new_client), ObjectClientConfig {
+                                           .endpoint = s3_conf.endpoint,
+                                           .ak = s3_conf.ak,
+                                           .sk = s3_conf.sk,
+                                   });
     LOG_INFO("create one s3 client with {}", s3_conf.to_string());
-    return backend;
+    return provider_client;
 }
 
 Status S3ClientFactory::convert_properties_to_s3_conf(

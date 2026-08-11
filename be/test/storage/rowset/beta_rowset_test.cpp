@@ -40,7 +40,7 @@
 
 #include "common/config.h"
 #include "common/status.h"
-#include "cpp/client/s3_obj_storage_backend.h"
+#include "cpp/client/s3_obj_storage_client.h"
 #include "cpp/sync_point.h"
 #include "gtest/gtest_pred_impl.h"
 #include "io/fs/file_system.h"
@@ -314,7 +314,7 @@ TEST_F(BetaRowsetTest, ReadTest) {
                 true);
 
         client = std::make_shared<io::ObjStorageClient>(
-                std::make_shared<io::S3ObjStorageBackend>(std::move(s3_client)));
+                std::make_shared<io::S3ObjStorageClient>(std::move(s3_client)));
 
         rowset.rowset_meta()->set_num_segments(1);
         rowset.rowset_meta()->set_remote_storage_resource(storage_resource);
@@ -328,7 +328,7 @@ TEST_F(BetaRowsetTest, ReadTest) {
     {
         Aws::Auth::AWSCredentials aws_cred("ak", "sk");
         Aws::Client::ClientConfiguration aws_config;
-        client = std::make_shared<io::ObjStorageClient>(std::make_shared<io::S3ObjStorageBackend>(
+        client = std::make_shared<io::ObjStorageClient>(std::make_shared<io::S3ObjStorageClient>(
                 std::make_shared<Aws::S3::S3Client>(S3ClientMockGetError())));
 
         rowset.rowset_meta()->set_num_segments(1);
@@ -343,7 +343,7 @@ TEST_F(BetaRowsetTest, ReadTest) {
     {
         Aws::Auth::AWSCredentials aws_cred("ak", "sk");
         Aws::Client::ClientConfiguration aws_config;
-        client = std::make_shared<io::ObjStorageClient>(std::make_shared<io::S3ObjStorageBackend>(
+        client = std::make_shared<io::ObjStorageClient>(std::make_shared<io::S3ObjStorageClient>(
                 std::make_shared<Aws::S3::S3Client>(S3ClientMockGetErrorData())));
 
         rowset.rowset_meta()->set_num_segments(1);

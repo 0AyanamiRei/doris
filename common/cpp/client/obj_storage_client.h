@@ -122,7 +122,7 @@ enum class ObjStorageRequestType {
 
 inline constexpr int32_t OBJECT_LIST_PAGE_SIZE = 1000;
 
-// One admission result for one object-storage backend request. `settle` is used by
+// One admission result for one object-storage provider request. `settle` is used by
 // byte-aware limiters to refund a short read after the call completes.
 struct ObjStorageRateLimitToken {
     ObjectStorageResponse resp = ObjectStorageResponse::OK();
@@ -187,9 +187,9 @@ struct RecursiveDeleteOptions {
     ObjStorageDeleteExecutor executor {};
 };
 
-class ObjStorageBackend {
+class ObjStorageProviderClient {
 public:
-    virtual ~ObjStorageBackend() = default;
+    virtual ~ObjStorageProviderClient() = default;
     // Create a multi-part upload request. On AWS-compatible systems, it will return an upload ID, but not on Azure.
     // The input parameters should include the bucket and key for the object storage.
     virtual ObjectStorageUploadResponse create_multipart_upload(
@@ -218,7 +218,7 @@ public:
     virtual ObjectStorageResponse get_object(const ObjectStoragePathOptions& opts, void* buffer,
                                              size_t offset, size_t bytes_read,
                                              size_t* size_return) = 0;
-    // Return at most one page of objects. One call corresponds to exactly one backend request.
+    // Return at most one page of objects. One call corresponds to exactly one provider request.
     // **Notice**: The files returned by this function contain the full key in object storage.
     virtual ObjectStorageListPage list_objects(const ObjectStoragePathOptions& path,
                                                std::string_view continuation_token) = 0;
@@ -257,14 +257,15 @@ public:
     }
 };
 
-// The only object-storage interface exposed to upper layers. It combines a backend implementation
-// with an optional runtime policy, so backends cannot accidentally bypass rate limiting.
+// The only object-storage interface exposed to upper layers. It combines a provider client
+// with an optional runtime policy, so provider clients cannot accidentally bypass rate limiting.
 class ObjStorageClient final {
 public:
     explicit ObjStorageClient(
-            std::shared_ptr<ObjStorageBackend> backend,
+            std::shared_ptr<ObjStorageProviderClient> provider_client,
             std::shared_ptr<const ObjStorageRateLimitPolicy> rate_limit_policy = nullptr)
-            : backend_(std::move(backend)), rate_limit_policy_(std::move(rate_limit_policy)) {}
+            : provider_client_(std::move(provider_client)),
+              rate_limit_policy_(std::move(rate_limit_policy)) {}
 
     ObjectStorageUploadResponse create_multipart_upload(const ObjectStoragePathOptions& opts);
     ObjectStorageResponse put_object(const ObjectStoragePathOptions& opts, std::string_view stream);
@@ -284,7 +285,7 @@ public:
     ObjectStorageResponse delete_objects_recursively(
             const ObjectStoragePathOptions& opts,
             const RecursiveDeleteOptions& options = RecursiveDeleteOptions {});
-    ObjStorageCapabilities capabilities() const { return backend_->capabilities(); }
+    ObjStorageCapabilities capabilities() const { return provider_client_->capabilities(); }
     std::string generate_presigned_url(const ObjectStoragePathOptions& opts,
                                        int64_t expiration_secs);
     ObjectStorageResponse get_life_cycle(const std::string& bucket, int64_t* expiration_days);
@@ -295,7 +296,7 @@ public:
 private:
     ObjStorageRateLimitToken acquire(ObjStorageRequestType type, size_t estimated_bytes = 0) const;
 
-    std::shared_ptr<ObjStorageBackend> backend_;
+    std::shared_ptr<ObjStorageProviderClient> provider_client_;
     std::shared_ptr<const ObjStorageRateLimitPolicy> rate_limit_policy_;
 };
 
@@ -328,7 +329,7 @@ using ::doris::ObjStorageCapabilities;
 using ::doris::ObjStorageClient;
 using ::doris::ObjStorageDeleteExecutor;
 using ::doris::ObjStorageDeleteTask;
-using ::doris::ObjStorageBackend;
+using ::doris::ObjStorageProviderClient;
 using ::doris::ObjStorageRateLimitPolicy;
 using ::doris::ObjStorageRateLimitToken;
 using ::doris::ObjStorageRequestType;

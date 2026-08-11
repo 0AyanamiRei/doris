@@ -16,7 +16,7 @@
 // under the License.
 
 #ifdef USE_AZURE
-#include "cpp/client/azure_obj_storage_backend.h"
+#include "cpp/client/azure_obj_storage_client.h"
 #endif
 
 #include <gtest/gtest.h>

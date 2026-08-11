@@ -48,7 +48,7 @@
 
 #include "common/config.h"
 #include "common/status.h"
-#include "cpp/client/s3_obj_storage_backend.h"
+#include "cpp/client/s3_obj_storage_client.h"
 #include "cpp/sync_point.h"
 #include "io/fs/file_reader.h"
 #include "io/fs/file_system.h"
@@ -269,7 +269,7 @@ static auto test_mock_callbacks = std::array {
                           pair->first = mock_client->head_object(req);
                       }},
         MockCallback {"s3_client_factory::create", [](auto&& outcome) {
-                          auto pair = try_any_cast_ret<std::shared_ptr<io::S3ObjStorageBackend>>(
+                          auto pair = try_any_cast_ret<std::shared_ptr<io::S3ObjStorageClient>>(
                                   outcome);
                           pair->second = true;
                       }}};
@@ -1089,10 +1089,10 @@ namespace io {
 /**
  * This class is for boundary test
  */
-class SimpleMockObjStorageBackend : public io::ObjStorageBackend {
+class SimpleMockObjStorageProviderClient : public io::ObjStorageProviderClient {
 public:
-    SimpleMockObjStorageBackend() = default;
-    ~SimpleMockObjStorageBackend() override = default;
+    SimpleMockObjStorageProviderClient() = default;
+    ~SimpleMockObjStorageProviderClient() override = default;
 
     ObjectStorageResponse default_response {ObjectStorageResponse::OK()};
     ObjectStorageUploadResponse default_upload_response {.resp = ObjectStorageResponse::OK(),
@@ -1283,7 +1283,7 @@ private:
  * Create a mock S3 client and a S3FileWriter.
  * @return A tuple containing the mock S3 client and the S3FileWriter.
  */
-std::tuple<std::shared_ptr<SimpleMockObjStorageBackend>, std::shared_ptr<S3FileWriter>>
+std::tuple<std::shared_ptr<SimpleMockObjStorageProviderClient>, std::shared_ptr<S3FileWriter>>
 create_s3_client(const std::string& path) {
     doris::io::FileWriterOptions opts;
     io::FileWriterPtr file_writer;
@@ -1291,7 +1291,7 @@ create_s3_client(const std::string& path) {
     EXPECT_TRUE(st.ok()) << st;
     std::shared_ptr<S3FileWriter> s3_file_writer(static_cast<S3FileWriter*>(file_writer.release()));
     auto holder = std::make_shared<ObjClientHolder>(S3ClientConf {});
-    auto mock_client = std::make_shared<SimpleMockObjStorageBackend>();
+    auto mock_client = std::make_shared<SimpleMockObjStorageProviderClient>();
     holder->_client = std::make_shared<ObjStorageClient>(mock_client);
     s3_file_writer->_obj_client = holder;
     return {mock_client, s3_file_writer};
@@ -1389,7 +1389,7 @@ TEST_F(S3FileWriterTest, write_buffer_boundary) {
     sp->clear_all_call_backs();
 
     // s3_file_writer is the interface to write to s3
-    // mock_client is a SimpleMockObjStorageBackend for testing, it holds the data in memory
+    // mock_client is a SimpleMockObjStorageProviderClient for testing, it holds the data in memory
     // we check the data in mock_client to make sure s3_file_writer is working as expected
     auto test = [](char magic_char, size_t data_size, const std::string& filename) {
         std::string content = generate_test_string(magic_char, data_size);
@@ -1494,7 +1494,7 @@ TEST_F(S3FileWriterTest, test_empty_file) {
     auto st = s3_fs->create_file("test_empty_file.idx", &file_writer, &opts);
     EXPECT_TRUE(st.ok()) << st;
     auto holder = std::make_shared<ObjClientHolder>(S3ClientConf {});
-    auto mock_client = std::make_shared<SimpleMockObjStorageBackend>();
+    auto mock_client = std::make_shared<SimpleMockObjStorageProviderClient>();
     holder->_client = std::make_shared<ObjStorageClient>(mock_client);
     dynamic_cast<io::S3FileWriter*>(file_writer.get())->_obj_client = holder;
     auto fs = io::global_local_filesystem();

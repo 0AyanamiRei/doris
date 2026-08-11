@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#include "azure_obj_storage_backend.h"
+#include "azure_obj_storage_client.h"
 
 #include <cctype>
 #include <string_view>
@@ -192,15 +192,15 @@ private:
 };
 
 // Azure would do nothing
-ObjectStorageUploadResponse AzureObjStorageBackend::create_multipart_upload(
+ObjectStorageUploadResponse AzureObjStorageClient::create_multipart_upload(
         const ObjectStoragePathOptions& opts) {
     return ObjectStorageUploadResponse {
             .resp = ObjectStorageResponse::OK(),
     };
 }
 
-ObjectStorageResponse AzureObjStorageBackend::put_object(const ObjectStoragePathOptions& opts,
-                                                         std::string_view stream) {
+ObjectStorageResponse AzureObjStorageClient::put_object(const ObjectStoragePathOptions& opts,
+                                                        std::string_view stream) {
     auto client = _client->GetBlockBlobClient(opts.key);
     return do_azure_client_call(
             [&]() {
@@ -210,8 +210,9 @@ ObjectStorageResponse AzureObjStorageBackend::put_object(const ObjectStoragePath
             opts, _config.tls_debug_context);
 }
 
-ObjectStorageUploadResponse AzureObjStorageBackend::upload_part(
-        const ObjectStoragePathOptions& opts, std::string_view stream, int part_num) {
+ObjectStorageUploadResponse AzureObjStorageClient::upload_part(const ObjectStoragePathOptions& opts,
+                                                               std::string_view stream,
+                                                               int part_num) {
     auto client = _client->GetBlockBlobClient(opts.key);
     try {
         Azure::Core::IO::MemoryBodyStream memory_body(
@@ -243,7 +244,7 @@ ObjectStorageUploadResponse AzureObjStorageBackend::upload_part(
     return ObjectStorageUploadResponse {.resp = ObjectStorageResponse::OK()};
 }
 
-ObjectStorageResponse AzureObjStorageBackend::complete_multipart_upload(
+ObjectStorageResponse AzureObjStorageClient::complete_multipart_upload(
         const ObjectStoragePathOptions& opts,
         const std::vector<ObjectCompleteMultiPart>& completed_parts) {
     auto client = _client->GetBlockBlobClient(opts.key);
@@ -260,8 +261,7 @@ ObjectStorageResponse AzureObjStorageBackend::complete_multipart_upload(
             opts, _config.tls_debug_context);
 }
 
-ObjectStorageHeadResponse AzureObjStorageBackend::head_object(
-        const ObjectStoragePathOptions& opts) {
+ObjectStorageHeadResponse AzureObjStorageClient::head_object(const ObjectStoragePathOptions& opts) {
     try {
         Models::BlobProperties properties = [&]() {
             client_bvar::ScopedLatency scoped_latency(client_bvar::s3_head_latency);
@@ -295,9 +295,9 @@ ObjectStorageHeadResponse AzureObjStorageBackend::head_object(
     }
 }
 
-ObjectStorageResponse AzureObjStorageBackend::get_object(const ObjectStoragePathOptions& opts,
-                                                         void* buffer, size_t offset,
-                                                         size_t bytes_read, size_t* size_return) {
+ObjectStorageResponse AzureObjStorageClient::get_object(const ObjectStoragePathOptions& opts,
+                                                        void* buffer, size_t offset,
+                                                        size_t bytes_read, size_t* size_return) {
     auto client = _client->GetBlockBlobClient(opts.key);
     return do_azure_client_call(
             [&]() {
@@ -313,8 +313,8 @@ ObjectStorageResponse AzureObjStorageBackend::get_object(const ObjectStoragePath
             opts, _config.tls_debug_context);
 }
 
-ObjectStorageListPage AzureObjStorageBackend::list_objects(const ObjectStoragePathOptions& opts,
-                                                           std::string_view continuation_token) {
+ObjectStorageListPage AzureObjStorageClient::list_objects(const ObjectStoragePathOptions& opts,
+                                                          std::string_view continuation_token) {
     const auto& prefix = opts.prefix.empty() ? opts.key : opts.prefix;
     ListBlobsOptions request;
     request.Prefix = prefix;
@@ -322,7 +322,7 @@ ObjectStorageListPage AzureObjStorageBackend::list_objects(const ObjectStoragePa
     if (!continuation_token.empty()) {
         request.ContinuationToken = std::string(continuation_token);
     }
-    TEST_SYNC_POINT_CALLBACK("AzureObjStorageBackend::list_objects", &request);
+    TEST_SYNC_POINT_CALLBACK("AzureObjStorageClient::list_objects", &request);
 
     try {
         auto response = [&]() {
@@ -384,8 +384,8 @@ ObjectStorageListPage AzureObjStorageBackend::list_objects(const ObjectStoragePa
 // As Azure's doc said, the batch size is 256
 // You can find out the num in https://learn.microsoft.com/en-us/rest/api/storageservices/blob-batch?tabs=microsoft-entra-id
 // > Each batch request supports a maximum of 256 subrequests.
-ObjectStorageResponse AzureObjStorageBackend::delete_objects(const ObjectStoragePathOptions& opts,
-                                                             std::vector<std::string> objs) {
+ObjectStorageResponse AzureObjStorageClient::delete_objects(const ObjectStoragePathOptions& opts,
+                                                            std::vector<std::string> objs) {
     // TODO(ByteYue) : use range to adate this code when compiler is ready
     // auto chunkedView = objs | std::views::chunk(BlobBatchMaxOperations);
     auto begin = std::begin(objs);
@@ -411,7 +411,7 @@ ObjectStorageResponse AzureObjStorageBackend::delete_objects(const ObjectStorage
     return ObjectStorageResponse::OK();
 }
 
-ObjectStorageResponse AzureObjStorageBackend::delete_object(const ObjectStoragePathOptions& opts) {
+ObjectStorageResponse AzureObjStorageClient::delete_object(const ObjectStoragePathOptions& opts) {
     try {
         auto resp = [&]() {
             client_bvar::ScopedLatency scoped_latency(client_bvar::s3_delete_object_latency);
@@ -457,8 +457,8 @@ ObjectStorageResponse AzureObjStorageBackend::delete_object(const ObjectStorageP
     }
 }
 
-std::string AzureObjStorageBackend::generate_presigned_url(const ObjectStoragePathOptions& opts,
-                                                           int64_t expiration_secs) {
+std::string AzureObjStorageClient::generate_presigned_url(const ObjectStoragePathOptions& opts,
+                                                          int64_t expiration_secs) {
     Azure::Storage::Sas::BlobSasBuilder sas_builder;
     sas_builder.ExpiresOn =
             std::chrono::system_clock::now() + std::chrono::seconds(expiration_secs);
@@ -487,19 +487,19 @@ std::string AzureObjStorageBackend::generate_presigned_url(const ObjectStoragePa
     return sasURL;
 }
 
-ObjectStorageResponse AzureObjStorageBackend::get_life_cycle(const std::string& /*bucket*/,
-                                                             int64_t* expiration_days) {
+ObjectStorageResponse AzureObjStorageClient::get_life_cycle(const std::string& /*bucket*/,
+                                                            int64_t* expiration_days) {
     // TODO(plat1ko)
     *expiration_days = INT64_MAX;
     return ObjectStorageResponse::OK();
 }
 
-ObjectStorageResponse AzureObjStorageBackend::check_versioning(const std::string& /*bucket*/) {
+ObjectStorageResponse AzureObjStorageClient::check_versioning(const std::string& /*bucket*/) {
     // TODO(plat1ko)
     return ObjectStorageResponse::OK();
 }
 
-ObjectStorageResponse AzureObjStorageBackend::abort_multipart_upload(
+ObjectStorageResponse AzureObjStorageClient::abort_multipart_upload(
         const ObjectStoragePathOptions& opts, const std::string& upload_id) {
     // delete uncommitted blobs
     // https://learn.microsoft.com/en-us/rest/api/storageservices/delete-blob?tabs=microsoft-entra-id#remarks
