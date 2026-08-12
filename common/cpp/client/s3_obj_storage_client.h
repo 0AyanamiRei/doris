@@ -87,7 +87,7 @@ namespace doris {
 
 ObjectStorageStatus s3fs_error(const Aws::S3::S3Error& err, std::string_view msg);
 
-class S3ObjStorageClient final : public ObjStorageProviderClient {
+class S3ObjStorageClient : public ObjStorageProviderClient {
 public:
     S3ObjStorageClient(std::shared_ptr<Aws::S3::S3Client> client, ObjectClientConfig config = {})
             : _config(std::move(config)), _client(std::move(client)) {}
@@ -120,6 +120,17 @@ public:
     ObjectStorageResponse abort_multipart_upload(const ObjectStoragePathOptions& opts,
                                                  const std::string& upload_id) override;
     ObjStorageCapabilities capabilities() const override { return {.max_delete_batch = 1000}; }
+
+protected:
+    virtual void set_create_multipart_upload_checksum(
+            Aws::S3::Model::CreateMultipartUploadRequest& request) const;
+    virtual void set_put_object_checksum(Aws::S3::Model::PutObjectRequest& request,
+                                         Aws::IOStream& stream) const;
+    virtual void set_upload_part_checksum(Aws::S3::Model::UploadPartRequest& request,
+                                          Aws::IOStream& stream) const;
+    ObjectStorageResponse complete_multipart_upload_impl(
+            const ObjectStoragePathOptions& opts,
+            Aws::S3::Model::CompleteMultipartUploadRequest request);
 
 private:
     ObjectClientConfig _config;

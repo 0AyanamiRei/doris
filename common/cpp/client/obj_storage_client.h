@@ -72,6 +72,7 @@ struct ObjectMeta {
 struct ObjectCompleteMultiPart {
     int part_num = 0;
     std::string etag {};
+    std::optional<std::string> checksum_crc32c = std::nullopt;
 };
 
 struct ObjectStorageStatus {
@@ -146,6 +147,7 @@ struct ObjectStorageUploadResponse {
     ObjectStorageResponse resp = ObjectStorageResponse::OK();
     std::optional<std::string> upload_id = std::nullopt;
     std::optional<std::string> etag = std::nullopt;
+    std::optional<std::string> checksum_crc32c = std::nullopt;
 };
 
 struct ObjectStorageHeadResponse {
