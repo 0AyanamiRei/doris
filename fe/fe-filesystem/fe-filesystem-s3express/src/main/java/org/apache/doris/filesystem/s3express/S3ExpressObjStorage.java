@@ -43,9 +43,9 @@ import java.util.List;
 /**
  * S3 Express object storage specialization.
  *
- * <p>The AWS SDK selects S3 Express Session Auth from the directory-bucket name, so client
- * creation and ordinary object operations are inherited. This class owns the directory-bucket
- * LIST constraints and the Express multipart checksum flow.
+ * <p>The AWS SDK selects S3 Express Session Auth from the bucket name, so client creation and
+ * ordinary object operations are inherited. This class owns the S3 Express LIST constraints and
+ * multipart checksum flow.
  */
 public final class S3ExpressObjStorage extends S3ObjStorage {
 
@@ -59,14 +59,14 @@ public final class S3ExpressObjStorage extends S3ObjStorage {
         ObjectStorageUri uri = ObjectStorageUri.parse(
                 remotePath, isUsePathStyle(), getSupportedSchemes());
         if (StringUtils.isNotEmpty(uri.key()) && !uri.key().endsWith("/")) {
-            throw new IOException("S3 directory bucket LIST prefix must end with '/': " + uri.key());
+            throw new IOException("S3 Express LIST prefix must end with '/': " + uri.key());
         }
         if (options != null && StringUtils.isNotEmpty(options.startAfter())) {
-            throw new IOException("StartAfter is not supported for S3 directory buckets");
+            throw new IOException("StartAfter is not supported for S3 Express");
         }
         if (options != null && StringUtils.isNotEmpty(options.delimiter())
                 && !"/".equals(options.delimiter())) {
-            throw new IOException("S3 directory bucket delimiter must be '/'");
+            throw new IOException("S3 Express delimiter must be '/'");
         }
         return super.listObjectsWithOptions(remotePath, options);
     }

@@ -27,30 +27,24 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.Set;
 
-/** SPI provider for explicit S3 Express and legacy Directory Bucket configurations. */
+/** SPI provider for S3 Express configurations. */
 public final class S3ExpressFileSystemProvider
         implements FileSystemProvider<S3ExpressFileSystemProperties> {
 
     @Override
     public boolean supports(Map<String, String> properties) {
-        if (S3CompatSignals.isS3ExpressProvider(properties)) {
-            return true;
-        }
-        return S3CompatSignals.isLegacyDirectoryBucketRequest(properties)
-                && (!S3CompatSignals.hasAnyExplicitFsSupport(properties)
-                        || S3CompatSignals.isFsSupport(properties, S3CompatSignals.FS_S3_SUPPORT));
+        return S3CompatSignals.isS3Express(properties);
     }
 
     @Override
     public boolean supportsExplicit(Map<String, String> properties) {
-        return S3CompatSignals.isS3ExpressProvider(properties)
-                || (S3CompatSignals.isFsSupport(properties, S3CompatSignals.FS_S3_SUPPORT)
-                        && S3CompatSignals.isLegacyDirectoryBucketRequest(properties));
+        return S3CompatSignals.isS3Express(properties)
+                && S3CompatSignals.hasAnyExplicitFsSupport(properties);
     }
 
     @Override
     public boolean supportsGuess(Map<String, String> properties) {
-        return S3CompatSignals.isLegacyDirectoryBucketRequest(properties);
+        return S3CompatSignals.isS3Express(properties);
     }
 
     @Override

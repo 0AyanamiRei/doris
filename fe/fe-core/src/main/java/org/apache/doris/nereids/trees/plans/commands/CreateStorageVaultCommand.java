@@ -150,7 +150,7 @@ public class CreateStorageVaultCommand extends Command implements ForwardWithSyn
                     && !"false".equalsIgnoreCase(
                             properties.get(S3ResourceCompat.USE_PATH_STYLE))) {
                 throw new AnalysisException(
-                        "S3 Express directory buckets require use_path_style=false");
+                        "S3 Express requires use_path_style=false");
             }
             if (!properties.containsKey(S3ResourceCompat.USE_PATH_STYLE)) {
                 properties = ImmutableMap.<String, String>builder()

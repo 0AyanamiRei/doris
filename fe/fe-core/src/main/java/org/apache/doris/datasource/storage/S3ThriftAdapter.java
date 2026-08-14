@@ -73,7 +73,7 @@ public final class S3ThriftAdapter {
 
     /**
      * Builds the wire value from raw user properties while taking the provider from the
-     * already-bound adapter. This preserves legacy Directory Bucket configurations whose raw
+     * already-bound adapter. This preserves S3 Express configurations whose raw
      * provider remains S3 but whose effective provider is S3EXPRESS.
      */
     public static TS3StorageParam getS3TStorageParam(StorageAdapter adapter) {

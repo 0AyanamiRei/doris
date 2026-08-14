@@ -21,7 +21,6 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -55,15 +54,15 @@ public final class S3CompatSignals {
     private static final String GCS_ENDPOINT_SUFFIX = "storage.googleapis.com";
     private static final String AWS_ENDPOINT_INFIX = "amazonaws.com";
 
+    private static final List<String> S3_ENDPOINT_ALIASES_LOWER = Collections.unmodifiableList(
+            Arrays.asList("s3.endpoint", "aws_endpoint", "endpoint", "aws.endpoint",
+                    "glue.endpoint", "aws.glue.endpoint"));
+
     /**
      * Endpoint aliases consulted by the GCS/AWS guesses, compared case-insensitively on the KEY.
      * Union of legacy {@code GCSProperties.GS_ENDPOINT_ALIAS} ({@code s3.endpoint}, {@code AWS_ENDPOINT},
      * {@code endpoint}, {@code ENDPOINT}) and this module's own endpoint aliases.
      */
-    private static final List<String> S3_ENDPOINT_ALIASES_LOWER = Collections.unmodifiableList(
-            Arrays.asList("s3.endpoint", "aws_endpoint", "endpoint", "aws.endpoint",
-                    "glue.endpoint", "aws.glue.endpoint"));
-
     private static final List<String> ENDPOINT_ALIASES_LOWER = Collections.unmodifiableList(
             Arrays.asList("gs.endpoint", "s3.endpoint", "aws_endpoint", "endpoint", "aws.endpoint",
                     "glue.endpoint", "aws.glue.endpoint"));
@@ -135,42 +134,21 @@ public final class S3CompatSignals {
         return "true".equalsIgnoreCase(properties.getOrDefault(key, "false"));
     }
 
-    /** True when the raw properties explicitly select the S3 Express provider. */
-    public static boolean isS3ExpressProvider(Map<String, String> properties) {
-        return S3_EXPRESS_PROVIDER.equals(normalizedProvider(properties));
-    }
-
-    /** True when an S3 endpoint alias identifies an S3 Express directory-bucket endpoint. */
-    public static boolean isS3ExpressEndpoint(Map<String, String> properties) {
-        String endpoint = endpointForAliases(properties, S3_ENDPOINT_ALIASES_LOWER);
-        return StringUtils.containsIgnoreCase(endpoint, "s3express-control.")
-                || StringUtils.containsIgnoreCase(endpoint, "s3express-");
-    }
-
-    /** Returns a binding view with the case-insensitively matched S3 endpoint under its canonical key. */
-    public static Map<String, String> withCanonicalS3Endpoint(Map<String, String> properties) {
-        String endpoint = endpointForAliases(properties, S3_ENDPOINT_ALIASES_LOWER);
-        if (endpoint == null) {
-            return properties;
-        }
-        Map<String, String> bindingProperties = new HashMap<>(properties);
-        bindingProperties.put(S3FileSystemProperties.ENDPOINT, endpoint);
-        return bindingProperties;
-    }
-
-    /**
-     * True for the legacy Directory Bucket configuration accepted before the dedicated provider:
-     * no provider (or {@code provider=S3}) plus an S3 Express endpoint.
-     */
-    public static boolean isLegacyDirectoryBucketRequest(Map<String, String> properties) {
+    /** True when the properties should use the S3 Express implementation. */
+    public static boolean isS3Express(Map<String, String> properties) {
         String provider = normalizedProvider(properties);
-        return (provider == null || "S3".equals(provider))
-                && isS3ExpressEndpoint(properties);
-    }
-
-    /** True when the map must be bound by the dedicated S3 Express provider. */
-    public static boolean isS3ExpressRequest(Map<String, String> properties) {
-        return isS3ExpressProvider(properties) || isLegacyDirectoryBucketRequest(properties);
+        if (S3_EXPRESS_PROVIDER.equals(provider)) {
+            return true;
+        }
+        if (provider != null && !"S3".equals(provider)) {
+            return false;
+        }
+        String endpoint = endpointForAliases(properties, S3_ENDPOINT_ALIASES_LOWER);
+        boolean s3ExpressEndpoint = StringUtils.containsIgnoreCase(endpoint, "s3express-control.")
+                || StringUtils.containsIgnoreCase(endpoint, "s3express-");
+        return s3ExpressEndpoint
+                && (!hasAnyExplicitFsSupport(properties)
+                        || isFsSupport(properties, FS_S3_SUPPORT));
     }
 
     /**
@@ -204,8 +182,9 @@ public final class S3CompatSignals {
      * {@code "S3"} on every S3-compatible map, including GCS/MinIO/Ozone ones.
      */
     public static boolean hasExplicitS3Request(Map<String, String> properties) {
-        return "S3".equals(normalizedProvider(properties))
-                || isS3ExpressProvider(properties)
+        String provider = normalizedProvider(properties);
+        return "S3".equals(provider)
+                || S3_EXPRESS_PROVIDER.equals(provider)
                 || isFsSupport(properties, FS_S3_SUPPORT);
     }
 

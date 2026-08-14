@@ -28,7 +28,7 @@ import java.util.Map;
 public final class S3ExpressFileSystemProperties extends S3FileSystemProperties {
 
     private S3ExpressFileSystemProperties(Map<String, String> rawProperties) {
-        super(rawProperties, S3CompatSignals.withCanonicalS3Endpoint(rawProperties));
+        super(rawProperties);
     }
 
     public static S3ExpressFileSystemProperties of(Map<String, String> properties) {
@@ -40,13 +40,12 @@ public final class S3ExpressFileSystemProperties extends S3FileSystemProperties 
     @Override
     public void validate() {
         super.validate();
-        if (!S3CompatSignals.isS3ExpressEndpoint(rawProperties())) {
-            throw new IllegalArgumentException(
-                    "S3 Express requires an s3express endpoint");
+        if (!S3CompatSignals.isS3Express(rawProperties())) {
+            throw new IllegalArgumentException("Properties do not select S3 Express");
         }
         if (isUsePathStyle()) {
             throw new IllegalArgumentException(
-                    "S3 Express directory buckets require virtual-hosted-style access");
+                    "S3 Express requires virtual-hosted-style access");
         }
     }
 

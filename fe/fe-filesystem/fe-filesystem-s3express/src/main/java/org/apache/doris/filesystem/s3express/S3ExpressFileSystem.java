@@ -21,7 +21,7 @@ import org.apache.doris.filesystem.s3.S3FileSystem;
 
 import java.util.List;
 
-/** Amazon S3 Express filesystem implementing directory-bucket glob planning. */
+/** Amazon S3 Express filesystem implementing S3 Express glob planning. */
 public final class S3ExpressFileSystem extends S3FileSystem {
 
     public S3ExpressFileSystem(S3ExpressFileSystemProperties properties) {
