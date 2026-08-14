@@ -214,6 +214,9 @@ std::optional<S3Conf> S3Conf::from_obj_store_info(const ObjectStoreInfoPB& obj_i
     case ObjectStoreInfoPB_Provider_BOS:
         s3_conf.provider = S3Conf::S3;
         break;
+    case ObjectStoreInfoPB_Provider_S3EXPRESS:
+        s3_conf.provider = S3Conf::S3EXPRESS;
+        break;
     case ObjectStoreInfoPB_Provider_GCP:
         s3_conf.provider = S3Conf::GCS;
         break;
@@ -261,6 +264,17 @@ std::optional<S3Conf> S3Conf::from_obj_store_info(const ObjectStoreInfoPB& obj_i
     s3_conf.bucket = obj_info.bucket();
     s3_conf.prefix = obj_info.prefix();
     s3_conf.use_virtual_addressing = !obj_info.use_path_style();
+    if (s3_conf.provider == S3Conf::S3EXPRESS && !s3_conf.use_virtual_addressing) {
+        LOG_WARNING("S3 Express requires virtual-hosted-style access")
+                .tag("obj_info", proto_to_json(obj_info));
+        return std::nullopt;
+    }
+    if (s3_conf.provider == S3Conf::S3EXPRESS &&
+        s3_conf.cred_provider_type == CredProviderType::Anonymous) {
+        LOG_WARNING("S3 Express does not support anonymous access")
+                .tag("obj_info", proto_to_json(obj_info));
+        return std::nullopt;
+    }
 
     return s3_conf;
 }
@@ -429,10 +443,9 @@ int S3Accessor::init() {
         // directory bucket ListObjectsV2 and upload checksum semantics.
         aws_config.endpointOverride.clear();
         aws_config.region = conf_.region;
-        aws_config.maxConnections = std::max(
-                (long)(config::recycle_pool_parallelism +
-                       config::instance_recycler_worker_pool_size),
-                (long)aws_config.maxConnections);
+        aws_config.maxConnections = std::max((long)(config::recycle_pool_parallelism +
+                                                    config::instance_recycler_worker_pool_size),
+                                             (long)aws_config.maxConnections);
         aws_config.scheme = Aws::Http::Scheme::HTTPS;
         aws_config.retryStrategy = std::make_shared<S3CustomRetryStrategy>(
                 config::max_s3_client_retry, /*retry_slow_down=*/false);
@@ -457,16 +470,23 @@ int S3Accessor::init() {
                 aws_config, Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::RequestDependent,
                 /*useVirtualAddressing=*/true);
         express_config.disableS3ExpressAuth = false;
+        Aws::S3::S3ClientConfiguration standard_auth_config = express_config;
+        standard_auth_config.disableS3ExpressAuth = true;
+        auto credentials_provider = std::move(credentials.provider);
         auto s3_client = std::make_shared<Aws::S3::S3Client>(
-                std::move(credentials.provider),
-                Aws::MakeShared<Aws::S3::S3EndpointProvider>("S3Accessor"),
+                credentials_provider, Aws::MakeShared<Aws::S3::S3EndpointProvider>("S3Accessor"),
                 std::move(express_config));
+        auto standard_auth_client = std::make_shared<Aws::S3::S3Client>(
+                std::move(credentials_provider),
+                Aws::MakeShared<Aws::S3::S3EndpointProvider>("S3Accessor"),
+                std::move(standard_auth_config));
         auto provider_client = std::make_shared<S3ExpressObjStorageClient>(
-                std::move(s3_client), ObjectClientConfig {
-                                              .endpoint = conf_.endpoint,
-                                              .ak = conf_.ak,
-                                              .sk = conf_.sk,
-                                      });
+                std::move(s3_client), std::move(standard_auth_client),
+                ObjectClientConfig {
+                        .endpoint = conf_.endpoint,
+                        .ak = conf_.ak,
+                        .sk = conf_.sk,
+                });
         obj_client_ = std::make_shared<ObjStorageClient>(
                 std::move(provider_client), std::make_shared<RecyclerObjStorageRateLimitPolicy>());
         return 0;

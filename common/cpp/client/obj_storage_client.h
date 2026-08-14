@@ -30,7 +30,7 @@
 #include <vector>
 
 namespace doris {
-// Names are in lexico order.
+// Numeric values are kept aligned with TObjStorageType.
 enum class ObjStorageType : uint8_t {
     UNKNOWN = 0,
     AWS = 1,
@@ -41,6 +41,7 @@ enum class ObjStorageType : uint8_t {
     OBS = 6,
     GCP = 7,
     TOS = 8,
+    S3EXPRESS = 9,
 };
 
 /// eg:
@@ -215,6 +216,11 @@ public:
     // According to the passed bucket and key, it will access whether the corresponding file exists in the object storage.
     // If it exists, it will return the corresponding file size
     virtual ObjectStorageHeadResponse head_object(const ObjectStoragePathOptions& opts) = 0;
+    virtual ObjectStorageResponse head_bucket(const std::string& /*bucket*/) {
+        return {.status = {TStatusCode::NOT_IMPLEMENTED_ERROR,
+                           "checking object storage buckets is not supported"},
+                .http_code = 0};
+    }
     // According to the bucket and key, it finds the corresponding file in the object storage
     // and starting from the offset, it reads bytes_read bytes into the buffer, with size_return recording the actual number of bytes read
     virtual ObjectStorageResponse get_object(const ObjectStoragePathOptions& opts, void* buffer,
@@ -277,6 +283,7 @@ public:
             const ObjectStoragePathOptions& opts,
             const std::vector<ObjectCompleteMultiPart>& completed_parts);
     ObjectStorageHeadResponse head_object(const ObjectStoragePathOptions& opts);
+    ObjectStorageResponse head_bucket(const std::string& bucket);
     ObjectStorageResponse get_object(const ObjectStoragePathOptions& opts, void* buffer,
                                      size_t offset, size_t bytes_read, size_t* size_return);
     ObjectStorageListPage list_objects(const ObjectStoragePathOptions& opts,

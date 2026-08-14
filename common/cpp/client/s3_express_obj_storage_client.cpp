@@ -18,6 +18,7 @@
 #include "s3_express_obj_storage_client.h"
 
 #include <aws/s3/model/ChecksumAlgorithm.h>
+#include <aws/s3/model/HeadBucketRequest.h>
 
 #include <algorithm>
 #include <string>
@@ -63,6 +64,31 @@ ObjectStorageListPage S3ExpressObjStorageClient::list_objects(const ObjectStorag
         return !object.file_path.starts_with(logical_prefix);
     });
     return page;
+}
+
+ObjectStorageResponse S3ExpressObjStorageClient::head_bucket(const std::string& bucket) {
+    Aws::S3::Model::HeadBucketRequest request;
+    request.SetBucket(bucket);
+    auto outcome = standard_auth_client_->HeadBucket(request);
+    if (outcome.IsSuccess()) {
+        return ObjectStorageResponse::OK();
+    }
+    record_object_request_failed(static_cast<int>(outcome.GetError().GetResponseCode()));
+    return {
+            .status = s3fs_error(outcome.GetError(),
+                                 fmt::format("failed to head bucket: {}", bucket)),
+            .http_code = static_cast<int>(outcome.GetError().GetResponseCode()),
+            .request_id = outcome.GetError().GetRequestId(),
+    };
+}
+
+std::string S3ExpressObjStorageClient::generate_presigned_url(const ObjectStoragePathOptions& opts,
+                                                              int64_t expiration_secs) {
+    // Session credentials expire after five minutes. Use the standard SigV4 client so a
+    // presigned URL remains valid for the expiration requested by the caller (subject to the
+    // lifetime of the configured IAM/STS credentials).
+    return standard_auth_client_->GeneratePresignedUrl(
+            opts.bucket, opts.key, Aws::Http::HttpMethod::HTTP_GET, expiration_secs);
 }
 
 ObjectStorageResponse S3ExpressObjStorageClient::get_life_cycle(const std::string& /*bucket*/,

@@ -23,10 +23,17 @@ namespace doris {
 
 class S3ExpressObjStorageClient final : public S3ObjStorageClient {
 public:
-    using S3ObjStorageClient::S3ObjStorageClient;
+    S3ExpressObjStorageClient(std::shared_ptr<Aws::S3::S3Client> client,
+                              std::shared_ptr<Aws::S3::S3Client> standard_auth_client,
+                              ObjectClientConfig config = {})
+            : S3ObjStorageClient(std::move(client), std::move(config)),
+              standard_auth_client_(std::move(standard_auth_client)) {}
 
     ObjectStorageListPage list_objects(const ObjectStoragePathOptions& opts,
                                        std::string_view continuation_token) override;
+    ObjectStorageResponse head_bucket(const std::string& bucket) override;
+    std::string generate_presigned_url(const ObjectStoragePathOptions& opts,
+                                       int64_t expiration_secs) override;
     ObjectStorageResponse get_life_cycle(const std::string& bucket,
                                          int64_t* expiration_days) override;
     ObjectStorageResponse check_versioning(const std::string& bucket) override;
@@ -41,6 +48,9 @@ protected:
                                  Aws::IOStream& stream) const override;
     void set_upload_part_checksum(Aws::S3::Model::UploadPartRequest& request,
                                   Aws::IOStream& stream) const override;
+
+private:
+    std::shared_ptr<Aws::S3::S3Client> standard_auth_client_;
 };
 
 } // namespace doris

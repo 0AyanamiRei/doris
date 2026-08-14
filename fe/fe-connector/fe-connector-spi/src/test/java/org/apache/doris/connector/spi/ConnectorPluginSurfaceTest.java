@@ -71,10 +71,10 @@ public class ConnectorPluginSurfaceTest {
             Assertions.assertNotNull(in, "missing connector plugin API version resource");
             version.load(in);
         }
-        // ConnectorWritePlanProvider and ConnectorColumnHandle gained public default methods in this
-        // surface revision. A plugin built against major 3 must be refused rather than silently run
-        // against an expanded contract it did not compile against.
-        Assertions.assertEquals("4.0", version.getProperty("api.version"));
+        // fe-filesystem-api is linked by connector plugins. UploadPartResult gained the CRC32C
+        // accessor in this revision, so a plugin built against major 4 must be refused rather than
+        // silently run against an expanded host API it did not compile against.
+        Assertions.assertEquals("5.0", version.getProperty("api.version"));
     }
 
     /** Root entry points plus provider/handle types returned to connector plugins. */

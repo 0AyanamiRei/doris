@@ -46,7 +46,7 @@ import java.util.regex.Pattern;
  * Binding uses {@link ConnectorProperty} aliases so legacy key names can continue
  * to work while callers migrate to canonical s3.* names.
  */
-public final class S3FileSystemProperties
+public class S3FileSystemProperties
         implements FileSystemProperties, BackendStorageProperties, HadoopStorageProperties,
                 S3CompatibleFileSystemProperties {
 
@@ -191,10 +191,15 @@ public final class S3FileSystemProperties
     private final Map<String, String> rawProperties;
     private final Map<String, String> matchedProperties;
 
-    private S3FileSystemProperties(Map<String, String> rawProperties) {
+    protected S3FileSystemProperties(Map<String, String> rawProperties) {
+        this(rawProperties, rawProperties);
+    }
+
+    protected S3FileSystemProperties(Map<String, String> rawProperties,
+            Map<String, String> bindingProperties) {
         this.rawProperties = Collections.unmodifiableMap(new HashMap<>(rawProperties));
         this.matchedProperties = Collections.unmodifiableMap(collectMatchedProperties(rawProperties));
-        ConnectorPropertiesUtils.bindConnectorProperties(this, rawProperties);
+        ConnectorPropertiesUtils.bindConnectorProperties(this, bindingProperties);
         normalizeForLegacyS3Compatibility();
     }
 
@@ -349,11 +354,6 @@ public final class S3FileSystemProperties
 
     public boolean hasAssumeRole() {
         return StringUtils.isNotBlank(roleArn);
-    }
-
-    public boolean isDirectoryBucketEndpoint() {
-        return StringUtils.containsIgnoreCase(endpoint, "s3express-control.")
-                || StringUtils.containsIgnoreCase(endpoint, "s3express-");
     }
 
     private static void putIfNotBlank(Map<String, String> map, String key, String value) {

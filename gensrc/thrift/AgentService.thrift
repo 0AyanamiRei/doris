@@ -97,7 +97,8 @@ enum TObjStorageType {
     OBS = 5,
     OSS = 6,
     GCP = 7,
-    TOS = 8
+    TOS = 8,
+    S3EXPRESS = 9
 }
 
 enum TCredProviderType {

@@ -167,7 +167,8 @@ public class S3Resource extends Resource {
 
             try {
                 org.apache.doris.filesystem.spi.RemoteObjects remoteObjects =
-                        objStorage.listObjects(testObj, null);
+                        objStorage.listObjects(
+                                testObj.substring(0, testObj.lastIndexOf('/') + 1), null);
                 LOG.info("remoteObjects: {}", remoteObjects);
             } catch (IOException e) {
                 throw new DdlException("pingS3 failed(list),"

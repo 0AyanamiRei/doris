@@ -21,12 +21,13 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 /**
- * Shared routing/validation signals for the S3-compatible dialects (GCS, MinIO, Ozone).
+ * Shared routing/validation signals for AWS S3 providers and S3-compatible dialects.
  *
  * <p>This is dialect plumbing rather than user-facing API, but it must be {@code public}: the
  * dialect providers live in sibling plugin jars that share this package name (a split package,
@@ -38,6 +39,9 @@ public final class S3CompatSignals {
 
     /** Explicit provider hint, e.g. {@code provider=GCS}. Mirrors StorageProperties.FS_PROVIDER_KEY. */
     public static final String PROVIDER_KEY = "provider";
+
+    /** Explicit provider name for Amazon S3 Express One Zone. */
+    public static final String S3_EXPRESS_PROVIDER = "S3EXPRESS";
 
     public static final String FS_S3_SUPPORT = "fs.s3.support";
 
@@ -56,6 +60,10 @@ public final class S3CompatSignals {
      * Union of legacy {@code GCSProperties.GS_ENDPOINT_ALIAS} ({@code s3.endpoint}, {@code AWS_ENDPOINT},
      * {@code endpoint}, {@code ENDPOINT}) and this module's own endpoint aliases.
      */
+    private static final List<String> S3_ENDPOINT_ALIASES_LOWER = Collections.unmodifiableList(
+            Arrays.asList("s3.endpoint", "aws_endpoint", "endpoint", "aws.endpoint",
+                    "glue.endpoint", "aws.glue.endpoint"));
+
     private static final List<String> ENDPOINT_ALIASES_LOWER = Collections.unmodifiableList(
             Arrays.asList("gs.endpoint", "s3.endpoint", "aws_endpoint", "endpoint", "aws.endpoint",
                     "glue.endpoint", "aws.glue.endpoint"));
@@ -127,6 +135,44 @@ public final class S3CompatSignals {
         return "true".equalsIgnoreCase(properties.getOrDefault(key, "false"));
     }
 
+    /** True when the raw properties explicitly select the S3 Express provider. */
+    public static boolean isS3ExpressProvider(Map<String, String> properties) {
+        return S3_EXPRESS_PROVIDER.equals(normalizedProvider(properties));
+    }
+
+    /** True when an S3 endpoint alias identifies an S3 Express directory-bucket endpoint. */
+    public static boolean isS3ExpressEndpoint(Map<String, String> properties) {
+        String endpoint = endpointForAliases(properties, S3_ENDPOINT_ALIASES_LOWER);
+        return StringUtils.containsIgnoreCase(endpoint, "s3express-control.")
+                || StringUtils.containsIgnoreCase(endpoint, "s3express-");
+    }
+
+    /** Returns a binding view with the case-insensitively matched S3 endpoint under its canonical key. */
+    public static Map<String, String> withCanonicalS3Endpoint(Map<String, String> properties) {
+        String endpoint = endpointForAliases(properties, S3_ENDPOINT_ALIASES_LOWER);
+        if (endpoint == null) {
+            return properties;
+        }
+        Map<String, String> bindingProperties = new HashMap<>(properties);
+        bindingProperties.put(S3FileSystemProperties.ENDPOINT, endpoint);
+        return bindingProperties;
+    }
+
+    /**
+     * True for the legacy Directory Bucket configuration accepted before the dedicated provider:
+     * no provider (or {@code provider=S3}) plus an S3 Express endpoint.
+     */
+    public static boolean isLegacyDirectoryBucketRequest(Map<String, String> properties) {
+        String provider = normalizedProvider(properties);
+        return (provider == null || "S3".equals(provider))
+                && isS3ExpressEndpoint(properties);
+    }
+
+    /** True when the map must be bound by the dedicated S3 Express provider. */
+    public static boolean isS3ExpressRequest(Map<String, String> properties) {
+        return isS3ExpressProvider(properties) || isLegacyDirectoryBucketRequest(properties);
+    }
+
     /**
      * True when the user explicitly declared ANY filesystem via {@code fs.<x>.support=true}.
      *
@@ -150,15 +196,16 @@ public final class S3CompatSignals {
     }
 
     /**
-     * True when the user explicitly asked for the generic S3 provider ({@code provider=S3} or
-     * {@code fs.s3.support=true}). Dialect providers must not guess against such a map, and the S3
-     * provider uses it as its escape hatch from the dialect yield rule.
+     * True when the user explicitly asked for an AWS S3 provider ({@code provider=S3},
+     * {@code provider=S3EXPRESS}, or {@code fs.s3.support=true}). Dialect providers must not guess
+     * against such a map, and the S3 provider uses it as its escape hatch from the dialect yield rule.
      *
      * <p>Note the {@code _STORAGE_TYPE_} marker is intentionally NOT consulted: the converter stamps
      * {@code "S3"} on every S3-compatible map, including GCS/MinIO/Ozone ones.
      */
     public static boolean hasExplicitS3Request(Map<String, String> properties) {
-        return "S3".equalsIgnoreCase(properties.get(PROVIDER_KEY))
+        return "S3".equals(normalizedProvider(properties))
+                || isS3ExpressProvider(properties)
                 || isFsSupport(properties, FS_S3_SUPPORT);
     }
 
@@ -256,7 +303,22 @@ public final class S3CompatSignals {
      * iteration order), matching the property key case-insensitively.
      */
     private static String endpointForGuessing(Map<String, String> properties) {
-        for (String alias : ENDPOINT_ALIASES_LOWER) {
+        return endpointForAliases(properties, ENDPOINT_ALIASES_LOWER);
+    }
+
+    private static String normalizedProvider(Map<String, String> properties) {
+        String provider = null;
+        for (Map.Entry<String, String> entry : properties.entrySet()) {
+            if (PROVIDER_KEY.equalsIgnoreCase(entry.getKey())) {
+                provider = entry.getValue();
+                break;
+            }
+        }
+        return StringUtils.isBlank(provider) ? null : provider.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private static String endpointForAliases(Map<String, String> properties, List<String> aliases) {
+        for (String alias : aliases) {
             for (Map.Entry<String, String> entry : properties.entrySet()) {
                 String key = entry.getKey();
                 if (key != null && alias.equals(key.toLowerCase(Locale.ROOT))

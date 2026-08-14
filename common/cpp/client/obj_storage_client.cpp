@@ -86,6 +86,14 @@ ObjectStorageHeadResponse ObjStorageClient::head_object(const ObjectStoragePathO
     return provider_client_->head_object(opts);
 }
 
+ObjectStorageResponse ObjStorageClient::head_bucket(const std::string& bucket) {
+    auto rate_limit = acquire(ObjStorageRequestType::GET);
+    if (!rate_limit.resp.ok()) {
+        return rate_limit.resp;
+    }
+    return provider_client_->head_bucket(bucket);
+}
+
 ObjectStorageResponse ObjStorageClient::get_object(const ObjectStoragePathOptions& opts,
                                                    void* buffer, size_t offset, size_t bytes_read,
                                                    size_t* size_return) {
