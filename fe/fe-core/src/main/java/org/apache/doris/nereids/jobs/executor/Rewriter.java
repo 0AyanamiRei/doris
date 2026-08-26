@@ -175,6 +175,7 @@ import org.apache.doris.nereids.rules.rewrite.batch.ApplyToJoin;
 import org.apache.doris.nereids.rules.rewrite.batch.CorrelateApplyToUnCorrelateApply;
 import org.apache.doris.nereids.rules.rewrite.batch.EliminateUselessPlanUnderApply;
 import org.apache.doris.nereids.rules.rewrite.eageraggregation.PushDownAggregation;
+import org.apache.doris.nereids.rules.rewrite.subquery.HolisticApplyEliminator;
 import org.apache.doris.nereids.trees.plans.algebra.SetOperation;
 import org.apache.doris.nereids.trees.plans.logical.LogicalAggregate;
 import org.apache.doris.nereids.trees.plans.logical.LogicalApply;
@@ -241,7 +242,10 @@ public class Rewriter extends AbstractBatchJobExecutor {
                                             new EliminateUselessPlanUnderApply(),
                                             // CorrelateApplyToUnCorrelateApply and ApplyToJoin
                                             // and SelectMaterializedIndexWithAggregate depends on this rule
-                                            new MergeProjectable(),
+                                            new MergeProjectable()
+                                    ),
+                                    custom(RuleType.HOLISTIC_APPLY_ELIMINATION, HolisticApplyEliminator::new),
+                                    bottomUp(
                                             /*
                                              * Subquery unnesting.
                                              * 1. Adjust the plan in correlated logicalApply
@@ -472,7 +476,10 @@ public class Rewriter extends AbstractBatchJobExecutor {
                             new EliminateUselessPlanUnderApply(),
                             // CorrelateApplyToUnCorrelateApply and ApplyToJoin
                             // and SelectMaterializedIndexWithAggregate depends on this rule
-                            new MergeProjectable(),
+                            new MergeProjectable()
+                    ),
+                    custom(RuleType.HOLISTIC_APPLY_ELIMINATION, HolisticApplyEliminator::new),
+                    bottomUp(
                             /*
                              * Subquery unnesting.
                              * 1. Adjust the plan in correlated logicalApply

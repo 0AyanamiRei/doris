@@ -425,6 +425,7 @@ public class SessionVariable implements Serializable, Writable {
     public static final String ENABLE_NEREIDS_DISTRIBUTE_PLANNER = "enable_nereids_distribute_planner";
     public static final String DISABLE_NEREIDS_RULES = "disable_nereids_rules";
     public static final String ENABLE_NEREIDS_RULES = "enable_nereids_rules";
+    public static final String ENABLE_HOLISTIC_SUBQUERY_UNNESTING = "enable_holistic_subquery_unnesting";
     public static final String ENABLE_VISITOR_REWRITER_DEPTH_THRESHOLD = "enable_visitor_rewriter_depth_threshold";
     public static final String DISABLE_NEREIDS_EXPRESSION_RULES = "disable_nereids_expression_rules";
     public static final String ENABLE_FALLBACK_TO_ORIGINAL_PLANNER = "enable_fallback_to_original_planner";
@@ -2088,6 +2089,13 @@ public class SessionVariable implements Serializable, Writable {
 
     @VarAttrDef.VarAttr(name = ENABLE_NEREIDS_RULES, needForward = true)
     public String enableNereidsRules = "";
+
+    @VarAttrDef.VarAttr(name = ENABLE_HOLISTIC_SUBQUERY_UNNESTING, needForward = true,
+            fuzzy = false, varType = VariableAnnotation.EXPERIMENTAL, description = {
+                "是否启用基于绑定域的整体相关子查询展开",
+                "Whether to enable domain-based holistic correlated subquery unnesting"
+            })
+    private boolean enableHolisticSubqueryUnnesting = false;
 
     @VarAttrDef.VarAttr(name = ENABLE_VISITOR_REWRITER_DEPTH_THRESHOLD, needForward = true, description = {
             "当查询计划的深度小于或等于这个阈值时，使用 visitor rewriter 去加速改写，否则使用 stack rewriter 去改写，"
@@ -5385,6 +5393,14 @@ public class SessionVariable implements Serializable, Writable {
 
     public boolean isEnableNereidsTrace() {
         return enableNereidsTrace;
+    }
+
+    public boolean isEnableHolisticSubqueryUnnesting() {
+        return enableHolisticSubqueryUnnesting;
+    }
+
+    public void setEnableHolisticSubqueryUnnesting(boolean enableHolisticSubqueryUnnesting) {
+        this.enableHolisticSubqueryUnnesting = enableHolisticSubqueryUnnesting;
     }
 
     public void setEnableExprTrace(boolean enableExprTrace) {

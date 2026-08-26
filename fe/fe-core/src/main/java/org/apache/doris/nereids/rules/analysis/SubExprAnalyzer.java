@@ -33,6 +33,7 @@ import org.apache.doris.nereids.trees.expressions.visitor.DefaultExpressionRewri
 import org.apache.doris.nereids.trees.plans.Plan;
 import org.apache.doris.nereids.trees.plans.PlanType;
 import org.apache.doris.nereids.trees.plans.logical.LogicalAggregate;
+import org.apache.doris.nereids.trees.plans.logical.LogicalApply;
 import org.apache.doris.nereids.trees.plans.logical.LogicalJoin;
 import org.apache.doris.nereids.trees.plans.logical.LogicalLimit;
 import org.apache.doris.nereids.trees.plans.logical.LogicalOneRowRelation;
@@ -177,9 +178,14 @@ class SubExprAnalyzer<T> extends DefaultExpressionRewriter<T> {
             }
             CorrelatedSlotsValidator validator =
                     new CorrelatedSlotsValidator(ImmutableSet.copyOf(analyzedResult.correlatedSlots));
-            List<PlanNodeCorrelatedInfo> nodeInfoList = new ArrayList<>(16);
-            Set<LogicalAggregate> topAgg = new HashSet<>();
-            validateSubquery(analyzedResult.logicalPlan, validator, nodeInfoList, topAgg);
+            if (isHolisticSubqueryUnnestingEnabled()
+                    && analyzedResult.logicalPlan.containsType(LogicalApply.class)) {
+                validateHolisticSubquery(analyzedResult.logicalPlan, validator);
+            } else {
+                List<PlanNodeCorrelatedInfo> nodeInfoList = new ArrayList<>(16);
+                Set<LogicalAggregate> topAgg = new HashSet<>();
+                validateSubquery(analyzedResult.logicalPlan, validator, nodeInfoList, topAgg);
+            }
         }
 
         if (analyzedResult.getLogicalPlan() instanceof LogicalOneRowRelation) {
@@ -544,5 +550,18 @@ class SubExprAnalyzer<T> extends DefaultExpressionRewriter<T> {
             }
         }
         nodeInfoList.remove(nodeInfoList.size() - 1);
+    }
+
+    private void validateHolisticSubquery(Plan plan, CorrelatedSlotsValidator validator) {
+        plan.accept(validator, null);
+        for (Plan child : plan.children()) {
+            validateHolisticSubquery(child, validator);
+        }
+    }
+
+    private boolean isHolisticSubqueryUnnestingEnabled() {
+        return cascadesContext != null && cascadesContext.getConnectContext() != null
+                && cascadesContext.getConnectContext().getSessionVariable()
+                        .isEnableHolisticSubqueryUnnesting();
     }
 }

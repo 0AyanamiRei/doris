@@ -310,9 +310,18 @@ public class ExpressionAnalyzer extends SubExprAnalyzer<ExpressionRewriteContext
         Optional<Scope> outerScope = getScope().getOuterScope();
         Optional<List<? extends Expression>> boundedOpt = Optional.of(bindSlotByThisScope(unboundSlot));
         boolean foundInThisScope = !boundedOpt.get().isEmpty();
-        // Currently only looking for symbols on the previous level.
+        List<Scope> traversedOuterScopes = Lists.newArrayList();
         if (bindSlotInOuterScope && !foundInThisScope && outerScope.isPresent()) {
-            boundedOpt = Optional.of(bindSlotByScope(unboundSlot, outerScope.get()));
+            Optional<Scope> candidateScope = outerScope;
+            do {
+                Scope currentOuterScope = candidateScope.get();
+                traversedOuterScopes.add(currentOuterScope);
+                boundedOpt = Optional.of(bindSlotByScope(unboundSlot, currentOuterScope));
+                if (!boundedOpt.get().isEmpty() || !isHolisticSubqueryUnnestingEnabled(context)) {
+                    break;
+                }
+                candidateScope = currentOuterScope.getOuterScope();
+            } while (candidateScope.isPresent());
         }
         // it is heavy to deduplicate slots in scope. So we deduplicates bounded here
         List<? extends Expression> bounded = boundedOpt.get();
@@ -329,14 +338,15 @@ public class ExpressionAnalyzer extends SubExprAnalyzer<ExpressionRewriteContext
                 return unboundSlot;
             case 1:
                 Expression firstBound = bounded.get(0);
-                if (!foundInThisScope && firstBound instanceof Slot
-                        && !outerScope.get().getCorrelatedSlots().contains(firstBound)) {
+                if (!foundInThisScope && firstBound instanceof Slot) {
                     if (currentPlan instanceof LogicalJoin) {
                         throw new AnalysisException(
                                 "Unsupported correlated subquery with correlated slot in join conjuncts "
                                         + currentPlan);
                     }
-                    outerScope.get().getCorrelatedSlots().add((Slot) firstBound);
+                    for (Scope traversedScope : traversedOuterScopes) {
+                        traversedScope.getCorrelatedSlots().add((Slot) firstBound);
+                    }
                 }
                 if (firstBound.getDataType() instanceof NestedColumnPrunable
                         || firstBound.getDataType().isVariantType()) {
@@ -379,6 +389,13 @@ public class ExpressionAnalyzer extends SubExprAnalyzer<ExpressionRewriteContext
                                 .map(Expression::toString)
                                 .collect(Collectors.joining(", "))));
         }
+    }
+
+    private boolean isHolisticSubqueryUnnestingEnabled(ExpressionRewriteContext context) {
+        return context != null && context.cascadesContext != null
+                && context.cascadesContext.getConnectContext() != null
+                && context.cascadesContext.getConnectContext().getSessionVariable()
+                        .isEnableHolisticSubqueryUnnesting();
     }
 
     protected void couldNotFoundColumn(UnboundSlot unboundSlot, String tableName) {
