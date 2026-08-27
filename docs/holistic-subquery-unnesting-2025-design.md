@@ -6,14 +6,16 @@
 
 本文以 `docs/doris-holistic-unnesting-architecture-survey.html` 为调研入口，重新核验了论文和实现源码：
 
-| 类别 | 固定基线 | 本文使用方式 |
-|---|---|---|
-| 2015 论文 | Neumann、Kemper，*Unnesting Arbitrary Queries* | 绑定域 `D`、dependent join 下推和 substitution 基线 |
-| 2025 论文 | Neumann，*Improving Unnesting of Complex Queries* | top-down/holistic 状态、嵌套 dependent join 和复杂算子规则 |
-| 形式化报告 | Neumann，*A Formalization of Top-Down Unnesting*（2024 v1 / 2026 v2） | bag 语义、属性隔离、`D` 覆盖与正确性条件 |
-| Spark | `eb327b68ab8571d425ed08d820ae8ccbafabf32f` | `DomainJoin` 中间态、递归 transfer function、COUNT 修正和测试矩阵 |
-| DuckDB | `6a3a26ffa866fcfccb74bbc1a9780b00a9ba082d` | holistic parent state、binding replacement graph、Delim/CTE 共享执行 |
-| Calcite | `2ceaf277b8eb16c6dbdce0e6129a8ad7c186a390` | `CorDef`、`UnnestedQuery` 输出映射和实验性 top-down visitor |
+
+| 类别      | 固定基线                                                               | 本文使用方式                                                         |
+| ------- | ------------------------------------------------------------------ | -------------------------------------------------------------- |
+| 2015 论文 | Neumann、Kemper，*Unnesting Arbitrary Queries*                       | 绑定域 `D`、dependent join 下推和 substitution 基线                     |
+| 2025 论文 | Neumann，*Improving Unnesting of Complex Queries*                   | top-down/holistic 状态、嵌套 dependent join 和复杂算子规则                 |
+| 形式化报告   | Neumann，*A Formalization of Top-Down Unnesting*（2024 v1 / 2026 v2） | bag 语义、属性隔离、`D` 覆盖与正确性条件                                       |
+| Spark   | `eb327b68ab8571d425ed08d820ae8ccbafabf32f`                         | `DomainJoin` 中间态、递归 transfer function、COUNT 修正和测试矩阵            |
+| DuckDB  | `6a3a26ffa866fcfccb74bbc1a9780b00a9ba082d`                         | holistic parent state、binding replacement graph、Delim/CTE 共享执行 |
+| Calcite | `2ceaf277b8eb16c6dbdce0e6129a8ad7c186a390`                         | `CorDef`、`UnnestedQuery` 输出映射和实验性 top-down visitor             |
+
 
 “任意嵌套”在本文中的目标含义是：对任意有限相关深度，只要节点属于已声明支持的关系算子集合、
 表达式满足按 binding 批处理或按 outer-row identity 隔离的合同，就能生成不含 free outer reference 和
@@ -22,38 +24,42 @@ dependent join 的等价普通计划。
 
 ## 1. 行为契约与结论
 
+
+
 ### 1.1 终局行为契约
 
 成功走 holistic 路径的查询必须同时满足：
 
 1. 完整 lexical scope chain 中的父层、祖父层及更外层引用都有唯一 provider，不能用裸 `Slot`
-   或名字猜测归属；
+  或名字猜测归属；
 2. 对每个 outer binding，改写前后的 SQL bag multiplicity、NULL/三值逻辑、scalar 0/1/>1 行、
-   aggregate 空输入、outer-join unmatched row、每 binding 的 window/TopN 语义一致；
+  aggregate 空输入、outer-join unmatched row、每 binding 的 window/TopN 语义一致；
 3. 嵌套 dependent join 从外向内作为一个整体处理，不构造原计划不可达的独立域笛卡尔积；
 4. holistic pass 原子成功或在改写前返回明确的 `DECLINED/UNSUPPORTED`，禁止把半改写计划交给旧规则；
 5. 进入普通 Nereids rewrite、Memo 和 physical planning 前，不残留 `LogicalApply`、outer reference 或
-   domain placeholder；binding/marker helper slot只在普通算子内部存活，不泄漏到用户 visible output；
+  domain placeholder；binding/marker helper slot只在普通算子内部存活，不泄漏到用户 visible output；
 6. 生成的最终节点仍是 Doris 已有的 join/aggregate/project/window/CTE 等普通节点，使 join reorder、
-   distribution、runtime filter 和 MPP 执行继续生效。
+  distribution、runtime filter 和 MPP 执行继续生效。
+
+
 
 ### 1.2 结论
 
 1. Doris 已能把常见的 `IN/NOT IN`、`EXISTS/NOT EXISTS` 和标量相关子查询改写成
-   semi/anti/mark/outer join，且已经处理三值逻辑、标量子查询行数校验、空输入上的
+  semi/anti/mark/outer join，且已经处理三值逻辑、标量子查询行数校验、空输入上的
    `COUNT` 等重要语义。
 2. 当前实现是“分析期限制 + bottom-up 局部 pattern rule”，不是完整的关系代数去相关算法。
-   它没有显式绑定域 `D`，没有跨多层 `Apply` 的统一状态，也不能表示祖父层及更外层引用。
+  它没有显式绑定域 `D`，没有跨多层 `Apply` 的统一状态，也不能表示祖父层及更外层引用。
 3. 这意味着当前最主要的问题是**能力不完备和错失选择性下推**。不能直接说 Doris 已经遭遇
-   2015 Domain-D 算法的笛卡尔积缺陷；论文中的典型深层案例在 Doris 中通常会更早被拒绝。
+  2015 Domain-D 算法的笛卡尔积缺陷；论文中的典型深层案例在 Doris 中通常会更早被拒绝。
 4. 不应继续以单条 `Apply -> Join` rule 修补。应增加 feature flag 控制的专用
-   `HolisticApplyEliminator`：先建立完整作用域绑定和 dependent-join IR，再以
+  `HolisticApplyEliminator`：先建立完整作用域绑定和 dependent-join IR，再以
    `accessing + parent + domain + repr + scoped equivalence` 状态处理整棵计划。
 5. 第一阶段采用 Spark 式 lazy `DomainSpec/DomainJoin`，在独立 lowering 阶段变成普通
-   aggregate + join；状态和输出映射采用 Calcite/DuckDB 的显式模型；共享执行逐步演进到
+  aggregate + join；状态和输出映射采用 Calcite/DuckDB 的显式模型；共享执行逐步演进到
    Doris forced internal CTE，最后才评估专用 physical delim fan-out。
 6. 第一版在无法证明安全的停止点一律选择显式 `D`。以后可以比较 `D` 与 substitution，
-   但两个局部子树并不等价：substitution 可能产生超集。只有包含最终 join-back 的完整计划
+  但两个局部子树并不等价：substitution 可能产生超集。只有包含最终 join-back 的完整计划
    才能作为同一 Memo group 的等价表达式。
 
 目标不是照抄某个单机数据库实现，而是保留 2025 算法的语义不变量，并让生成的普通
@@ -64,10 +70,14 @@ aggregate/join/window 计划继续进入 Doris 现有的 Cascades、MPP 分布�
 - 本文不设计 FE 逐外表行发起子查询的执行方式；可选 physical Apply 是独立后续能力。
 - 第一批 PR 不同时解决所有 join/set-op/recursive CTE，也不删除 legacy 规则。
 - 本文不把未复现的相邻 Nereids 问题纳入实现范围；每个阶段只解除其 handler 已覆盖的 analyzer
-  白名单。
+白名单。
 - Materialize 仅作为算法对照。当前主仓库以 BSL 1.1 为主，不能向 Apache Doris 复制其实现。
 
+
+
 ## 2. 算法基线
+
+
 
 ### 2.1 2015：以绑定域 `D` 消除 dependent join
 
@@ -127,13 +137,13 @@ L JOIN_{p AND L.keys <=> D.keys} (D depjoin R)
 把算法改成 top-down，并统一处理所有 dependent join。核心不是一组额外 pattern，而是三个部分：
 
 1. **识别访问关系。** 对每个 dependent join，标出右子树中哪些 operator 访问它提供的外部列。
-   论文以 producer、accessing operator 的最近公共祖先为基础，并使用
+  论文以 producer、accessing operator 的最近公共祖先为基础，并使用
    [Indexed Algebra（PVLDB 2023）](https://www.vldb.org/pvldb/vol16/p3018-fent.pdf)
    高效回答树位置问题。
 2. **尽量做 simple unnesting。** 线性路径上的 filter 可并入 join，map 可上移。所有访问都被
-   消掉时，dependent join 直接变成普通 join，不必创建 `D`。
-3. **需要 `D` 时 top-down 传播统一状态。** 遇到嵌套 dependent join，内层继承外层状态；
-   先处理内层左侧绑定来源，再合并访问标记处理其右侧。不会让两个互不相关的 `D` 穿过
+  消掉时，dependent join 直接变成普通 join，不必创建 `D`。
+3. **需要** `D` **时 top-down 传播统一状态。** 遇到嵌套 dependent join，内层继承外层状态；
+  先处理内层左侧绑定来源，再合并访问标记处理其右侧。不会让两个互不相关的 `D` 穿过
    dependent join 相乘。
 
 论文中的全局和局部状态可概括为：
@@ -167,12 +177,14 @@ record UnnestingState(
 - 遇到嵌套 dependent join 时，外层 `D` 只进入内层左侧；内层 join 再把表示传给右侧；
 - 每个 operator 至多访问一次，最终不再残留 dependent join。
 
+
+
 ### 2.4 2015 规则基础与 2025 扩展的复杂 operator
 
 2015/formal 的通用规则与 2025 论文新增的复杂结构合起来覆盖：
 
 - left/right/full outer join：分别维护两侧表示，以 NULL-safe equality 重连；full join 的代表列
-  使用 `COALESCE(left_repr, right_repr)`；
+使用 `COALESCE(left_repr, right_repr)`；
 - window：把绑定表示加入 `PARTITION BY`；
 - `ORDER BY ... LIMIT/OFFSET`：改写为按绑定分区的 `ROW_NUMBER`，再过滤行号；
 - set operation：2015/formal 要求把绑定列传入所有 child，并保持各自 bag/set 语义；
@@ -180,6 +192,8 @@ record UnnestingState(
 - shared CTE DAG：把 DAG 视为 producer tree 加 consumer proxy tree，producer 只转换一次；
 - recursive CTE：把绑定列同时穿过 seed、recursive term 和 work table；
 - full join condition 中同时引用 join 两侧的 singleton subquery（论文 §4.1 的明确前提）。
+
+
 
 ### 2.5 论文证明边界与 Doris 必须补齐的语义
 
@@ -191,32 +205,36 @@ left outer 和 nested dependent join 的步骤。
 不能把“论文题目中的 arbitrary”解释成所有 SQL 语义都已经有证明：
 
 - right/full outer、window、TopN、CTE 和 recursive CTE 主要来自 2025 正文的规则或伪码，不在该报告的
-  完整证明集合中；
+完整证明集合中；
 - scalar subquery 的 canonical lowering 是 dependent single join，但 2015/2025 主算法没有展开
-  per-binding `Max1`/多行报错；
+per-binding `Max1`/多行报错；
 - 2015 的普通 group-by 下推没有单独处理 SQL global/static aggregate 的空输入一行，2025 才明确要求
-  domain outer/group join；
+domain outer/group join；
 - mark join、`IN/NOT IN` 的 UNKNOWN、Doris aggregate 的各类 empty default 需要以 Doris 现有语义为准；
 - 论文把表达式当作数学函数，未讨论 volatile、side effect 或异常求值次数。purity barrier 是 Doris
-  必须增加的工程约束，不应冒充论文结论。
+必须增加的工程约束，不应冒充论文结论。
 
 因此，论文提供算法骨架和部分证明；Doris 的验收标准仍然是 SQL 语义矩阵、结构 invariant 与
 differential/fuzz 三层证据。
 
 ## 3. 开源与公开源码实现核验及设计取舍
 
+
+
 ### 3.1 横向结论
 
-| 维度 | Spark | DuckDB | Calcite TopDown | Doris 取舍 |
-|---|---|---|---|---|
-| 主入口 | `DecorrelateInnerQuery` | `FlattenDependentJoins` | `TopDownGeneralDecorrelator` | 独立 whole-plan pass |
-| 遍历/状态 | 单个 inner plan 的带状态递归，2015 DomainJoin 路线 | 完整计划后 outer-to-inner，child flattener 继承 parent | top-down visitor + sub-decorrelator | 从第一版保留 parent/access contract |
-| domain IR | `DomainJoin` placeholder | `LOGICAL_DELIM_JOIN` type + `LogicalDelimGet`/generated CTE | `DedupFreeVarsNode` | lazy `DomainSpec` + 临时 placeholder |
-| 输出映射 | 递归内部 outer-ref map + join conditions | binding vector + `BindingReplacementGraph` | `UnnestedQuery.corDefOutputs/oldToNewOutputs` | `RewriteResult` 显式返回两类映射 |
-| domain 执行 | outer 上 distinct aggregate，逻辑上可复制 outer | physical DelimJoin；当前默认也可降成共享 materialized CTE | aggregate/value generator + 普通 join | 普通计划先行，forced internal CTE 共享演进 |
-| NULL/empty | null-safe domain key；专门 COUNT-bug 分支 | delim key null-safe；count rewrite/null propagation | `IS NOT DISTINCT FROM`；static aggregate value generator | 全局 invariant，不散落在 handler |
-| 复杂形态 | 覆盖广但仍有 analyzer/deep-correlation 限制 | 生产路径覆盖最广，含 CTE/recursive/full join 等大量分支 | `@Experimental`，opt-in，unsupported 可保留旧 plan | 行为 oracle 取 DuckDB，Java 状态表达取 Calcite |
-| 成熟度 | 生产 | 生产 | 默认关闭 | feature flag + 分阶段白名单 |
+
+| 维度         | Spark                                   | DuckDB                                                      | Calcite TopDown                                         | Doris 取舍                              |
+| ---------- | --------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------- |
+| 主入口        | `DecorrelateInnerQuery`                 | `FlattenDependentJoins`                                     | `TopDownGeneralDecorrelator`                            | 独立 whole-plan pass                    |
+| 遍历/状态      | 单个 inner plan 的带状态递归，2015 DomainJoin 路线 | 完整计划后 outer-to-inner，child flattener 继承 parent              | top-down visitor + sub-decorrelator                     | 从第一版保留 parent/access contract         |
+| domain IR  | `DomainJoin` placeholder                | `LOGICAL_DELIM_JOIN` type + `LogicalDelimGet`/generated CTE | `DedupFreeVarsNode`                                     | lazy `DomainSpec` + 临时 placeholder    |
+| 输出映射       | 递归内部 outer-ref map + join conditions    | binding vector + `BindingReplacementGraph`                  | `UnnestedQuery.corDefOutputs/oldToNewOutputs`           | `RewriteResult` 显式返回两类映射              |
+| domain 执行  | outer 上 distinct aggregate，逻辑上可复制 outer | physical DelimJoin；当前默认也可降成共享 materialized CTE              | aggregate/value generator + 普通 join                     | 普通计划先行，forced internal CTE 共享演进       |
+| NULL/empty | null-safe domain key；专门 COUNT-bug 分支    | delim key null-safe；count rewrite/null propagation          | `IS NOT DISTINCT FROM`；static aggregate value generator | 全局 invariant，不散落在 handler             |
+| 复杂形态       | 覆盖广但仍有 analyzer/deep-correlation 限制     | 生产路径覆盖最广，含 CTE/recursive/full join 等大量分支                    | `@Experimental`，opt-in，unsupported 可保留旧 plan            | 行为 oracle 取 DuckDB，Java 状态表达取 Calcite |
+| 成熟度        | 生产                                      | 生产                                                          | 默认关闭                                                    | feature flag + 分阶段白名单                 |
+
 
 三者共同证明了一个工程事实：递归函数不能只返回 `Plan`。Project、Aggregate、Join、SetOp 和 CTE
 都会改变列身份或位置，父节点必须拿到 correlation binding 的新表示和原输出映射。
@@ -224,23 +242,23 @@ differential/fuzz 三层证据。
 ### 3.2 Spark：适合第一条 vertical slice 的 DomainJoin 外壳
 
 固定提交中的
-[`DecorrelateInnerQuery.scala`](https://github.com/apache/spark/blob/eb327b68ab8571d425ed08d820ae8ccbafabf32f/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/optimizer/DecorrelateInnerQuery.scala)
+`[DecorrelateInnerQuery.scala](https://github.com/apache/spark/blob/eb327b68ab8571d425ed08d820ae8ccbafabf32f/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/optimizer/DecorrelateInnerQuery.scala)`
 内部递归返回三元组：新 inner plan、与 outer 的 join conditions、outer reference 到 inner/domain attribute
 的 replacement map；公开入口最终返回 plan 和 conditions。其关键 transfer function 是：
 
 1. 子树不再相关且待绑定集合为空，原样停止；待绑定集合非空则插入 `DomainJoin`，为每个 key 分配
-   fresh attribute，并生成 `fresh <=> OuterReference(original)`；
+  fresh attribute，并生成 `fresh <=> OuterReference(original)`；
 2. Filter 把 conjunct 分成 correlated/uncorrelated，只有可安全跨 aggregate 的等值项才作为
-   substitution/join condition；其余表达式整体以 domain attribute 改写，因此 OR/non-equi 不必强拆；
+  substitution/join condition；其余表达式整体以 domain attribute 改写，因此 OR/non-equi 不必强拆；
 3. Project/Aggregate 透传上层 join condition 仍需的属性，Aggregate 把 binding 加入 group/output；
 4. global aggregate 在启用 `handleCountBug` 时增加 `alwaysTrue` marker、left `DomainJoin`，并按 aggregate
-   的 zero-tuple result 修复右侧 null padding，而不是只硬编码 `COUNT(*)`；
+  的 zero-tuple result 修复右侧 null padding，而不是只硬编码 `COUNT(*)`；
 5. Join 根据 join type 和两侧 correlation 决定单侧或双侧传播，双侧用 null-safe key 对齐；SetOp
-   统一所有 child 的 domain 列位置和 attribute identity；
+  统一所有 child 的 domain 列位置和 attribute identity；
 6. Limit/Offset 的相关分支把紧邻 Sort 改写成按 domain partition 的 `ROW_NUMBER`。不能把它扩大解释为
-   任意 Sort：独立 Sort 仍走通用 unary 路径，Sort/Window 自身的 outer reference 仍受限制；
-7. [`rewriteDomainJoins`](https://github.com/apache/spark/blob/eb327b68ab8571d425ed08d820ae8ccbafabf32f/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/optimizer/DecorrelateInnerQuery.scala#L387-L465)
-   最后以 outer 上的 distinct Aggregate 和普通 Join 替换 placeholder。
+  任意 Sort：独立 Sort 仍走通用 unary 路径，Sort/Window 自身的 outer reference 仍受限制；
+7. `[rewriteDomainJoins](https://github.com/apache/spark/blob/eb327b68ab8571d425ed08d820ae8ccbafabf32f/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/optimizer/DecorrelateInnerQuery.scala#L387-L465)`
+  最后以 outer 上的 distinct Aggregate 和普通 Join 替换 placeholder。
 
 `DomainJoin` 只有 Inner 与 COUNT/static-aggregate 修正所需的 LeftOuter 两种临时类型，没有 physical
 实现。普通 Inner placeholder通常只表示 domain attachment，non-equi residual 仍可能在上层 Filter，
@@ -255,28 +273,28 @@ differential/fuzz 三层证据。
 ### 3.3 DuckDB：holistic 状态和共享执行的行为基线
 
 固定提交中的
-[`flatten_dependent_join.cpp`](https://github.com/duckdb/duckdb/blob/6a3a26ffa866fcfccb74bbc1a9780b00a9ba082d/src/planner/subquery/flatten_dependent_join.cpp)
+`[flatten_dependent_join.cpp](https://github.com/duckdb/duckdb/blob/6a3a26ffa866fcfccb74bbc1a9780b00a9ba082d/src/planner/subquery/flatten_dependent_join.cpp)`
 已经先保留完整 `LogicalDependentJoin` 计划，再统一 decorrelate。实现中最值得 Doris 借鉴的是：
 
 - `UnnestingState` 同时携带当前 binding layout 和 `BindingReplacementGraph`；每次 child rewrite 后通过
-  显式 old/new binding layout 修补父节点，不靠位置猜测；
+显式 old/new binding layout 修补父节点，不靠位置猜测；
 - `SubtreeAccess {correlated, volatile_expression}` 以 plan identity 缓存，决定何处仍需 active domain；
 - 遇到 nested dependent join 时，`PrepareDependentJoinLeft` 先在 parent flattener 中处理 inner left，
-  再创建 child flattener 处理 inner right，最后合并 replacement graph；
+再创建 child flattener 处理 inner right，最后合并 replacement graph；
 - Projection/Aggregate/Window/Limit/SetOp/Distinct/Join/FullOuter/CTE/recursive CTE 都有独立 handler；
-  full outer join 在上层 Project 用 `COALESCE(left_binding,right_binding)` 形成代表；
+full outer join 在上层 Project 用 `COALESCE(left_binding,right_binding)` 形成代表；
 - `FinalizeDependentJoin` 会验证每个 active binding 恰由一个输入拥有，再生成 delim join 和 null-safe
-  conditions；这类 assert 比“缺列就跳过”更符合 Doris 的编码约束。
+conditions；这类 assert 比“缺列就跳过”更符合 Doris 的编码约束。
 
 对不能按 distinct binding 合并求值的 volatile path，DuckDB 可在 LHS 增加 synthetic row number，
 以 row identity 驱动每条 outer row，而不是错误地共享相同业务 key；这启发 Doris 的
 `RepeatabilityContract`，但不意味着所有 side effect 的 SQL 语义已经由论文定义。
 
-DuckDB 的 [`plan_delim_join.cpp`](https://github.com/duckdb/duckdb/blob/6a3a26ffa866fcfccb74bbc1a9780b00a9ba082d/src/execution/physical_plan/plan_delim_join.cpp)
+DuckDB 的 `[plan_delim_join.cpp](https://github.com/duckdb/duckdb/blob/6a3a26ffa866fcfccb74bbc1a9780b00a9ba082d/src/execution/physical_plan/plan_delim_join.cpp)`
 让原始 LHS 与 HashDistinct 产生的 domain 在同一 pipeline 中共享，并把多个 DelimScan 连接到同一数据集。
 同一固定提交还包含
-[`delim_join_cte_rewriter.cpp`](https://github.com/duckdb/duckdb/blob/6a3a26ffa866fcfccb74bbc1a9780b00a9ba082d/src/planner/subquery/delim_join_cte_rewriter.cpp)：
-[`delim_join_as_cte`](https://github.com/duckdb/duckdb/blob/6a3a26ffa866fcfccb74bbc1a9780b00a9ba082d/src/include/duckdb/main/settings.hpp#L839-L847)
+`[delim_join_cte_rewriter.cpp](https://github.com/duckdb/duckdb/blob/6a3a26ffa866fcfccb74bbc1a9780b00a9ba082d/src/planner/subquery/delim_join_cte_rewriter.cpp)`：
+`[delim_join_as_cte](https://github.com/duckdb/duckdb/blob/6a3a26ffa866fcfccb74bbc1a9780b00a9ba082d/src/include/duckdb/main/settings.hpp#L839-L847)`
 在该提交中默认 `true`，会将 delim 结构降成 materialized CTE，并继续做 domain 消除和谓词处理。
 历史 [PR #23098](https://github.com/duckdb/duckdb/pull/23098) 合入时不建议默认开启，后续
 [PR #23333](https://github.com/duckdb/duckdb/pull/23333) 才翻转默认值；设计不能把“存在 CTE rewrite”
@@ -293,21 +311,21 @@ right-full lateral 等 shape。因此“生产 holistic 路径”描述的是 fr
 ### 3.4 Calcite：最清晰的 Java 状态/输出 contract
 
 固定提交的
-[`TopDownGeneralDecorrelator.java`](https://github.com/apache/calcite/blob/2ceaf277b8eb16c6dbdce0e6129a8ad7c186a390/core/src/main/java/org/apache/calcite/sql2rel/TopDownGeneralDecorrelator.java)
+`[TopDownGeneralDecorrelator.java](https://github.com/apache/calcite/blob/2ceaf277b8eb16c6dbdce0e6129a8ad7c186a390/core/src/main/java/org/apache/calcite/sql2rel/TopDownGeneralDecorrelator.java)`
 与 Doris 同为 Java，几个对象可直接映射设计职责：
 
 - `CorDef(correlationId, field)` 明确 outer field 的 owner；
 - `hasCorrelatedExpressions` 预标注子树访问，`mapRelToUnnestedQuery` 缓存 rewrite 结果；
 - `UnnestedQuery` 保存 old/new node、`corDefOutputs` 和 `oldToNewOutputs`，解决 operator 改变 output
-  layout 后父节点如何重写；
+layout 后父节点如何重写；
 - `DedupFreeVarsNode` 表示去重自由变量域；nested Correlate 由共享父状态的 sub-decorrelator 合并；
 - Aggregate 的 static case使用 D left join，Sort 的 OFFSET/FETCH 改写为 window，Join/SetOp 都统一
-  correlation output；full outer join同样以 `COALESCE` 形成代表。
+correlation output；full outer join同样以 `COALESCE` 形成代表。
 
 它也给出两个警示。第一，预处理 `HepPlanner` 明确设置 `noDag=true`，因为同一 RelNode 在不同
 correlation context 下的 annotation 不同；Doris 的缓存键必须包含 context fingerprint，或在 CTE
 阶段显式 tree-cut。第二，类仍标记为 `@Experimental`，属性
-[`topDownGeneralDecorrelationEnabled`](https://github.com/apache/calcite/blob/2ceaf277b8eb16c6dbdce0e6129a8ad7c186a390/core/src/main/java/org/apache/calcite/config/CalciteConnectionProperty.java#L153-L159)
+`[topDownGeneralDecorrelationEnabled](https://github.com/apache/calcite/blob/2ceaf277b8eb16c6dbdce0e6129a8ad7c186a390/core/src/main/java/org/apache/calcite/config/CalciteConnectionProperty.java#L153-L159)`
 默认 `false`。虽然类注释仍写“not yet integrated”，固定提交的
 `Programs.subQuery` 和 `DecorrelateProgram` 已接入 opt-in 全链路；应表述为“已 opt-in 集成但非默认
 生产路径”，不能只引用过时注释或反过来称其成熟。
@@ -325,17 +343,23 @@ Materialize 的 decorrelation 也能观察到“distinct outer bindings + RHS + 
 
 ### 3.6 落到 Doris 的明确选择
 
-| 选择 | 采用 | 不采用/延后 |
-|---|---|---|
-| traversal | DuckDB/2025 的完整计划、outer-to-inner、parent-aware | 每个 Apply 独立 bottom-up |
-| logical IR | Spark 的 lazy placeholder 边界 | 第一版就新增 physical dependent join |
-| binding identity | Calcite `CorDef` 思路 + Doris `ScopeId/ApplyId/ExprId` | DuckDB table-index/offset 算术 |
-| rewrite API | Calcite/DuckDB 的 output map + replacement graph | 只返回 Plan 的局部 rule |
-| correctness | DuckDB/Spark 测试矩阵 + Doris 现有 mark/scalar 语义 | 依赖单一系统结果作为证明 |
-| execution | 普通 Aggregate/Join；随后 forced internal CTE | 第一版复制 DuckDB physical delim pipeline |
-| cost choice | 先总是显式 D；后续比较完整计划 | 在局部不等价子树间建 Memo 等价组 |
+
+| 选择               | 采用                                                   | 不采用/延后                               |
+| ---------------- | ---------------------------------------------------- | ------------------------------------ |
+| traversal        | DuckDB/2025 的完整计划、outer-to-inner、parent-aware        | 每个 Apply 独立 bottom-up                |
+| logical IR       | Spark 的 lazy placeholder 边界                          | 第一版就新增 physical dependent join       |
+| binding identity | Calcite `CorDef` 思路 + Doris `ScopeId/ApplyId/ExprId` | DuckDB table-index/offset 算术         |
+| rewrite API      | Calcite/DuckDB 的 output map + replacement graph      | 只返回 Plan 的局部 rule                    |
+| correctness      | DuckDB/Spark 测试矩阵 + Doris 现有 mark/scalar 语义          | 依赖单一系统结果作为证明                         |
+| execution        | 普通 Aggregate/Join；随后 forced internal CTE             | 第一版复制 DuckDB physical delim pipeline |
+| cost choice      | 先总是显式 D；后续比较完整计划                                     | 在局部不等价子树间建 Memo 等价组                  |
+
+
+
 
 ## 4. Doris 当前实现
+
+
 
 ### 4.1 当前主链路
 
@@ -385,16 +409,20 @@ ApplyToJoin                        -- scalar / IN / EXISTS
 
 当前实现已有下列有价值的基础，不能在重构中回退：
 
-| 能力 | 当前处理 |
-|---|---|
-| `IN/NOT IN`、`EXISTS/NOT EXISTS`、scalar | 转成 semi/anti/mark/outer join |
-| OR 等复杂布尔上下文 | mark join 保存布尔结果 |
-| `NOT IN` + NULL | uncorrelated nullable 场景使用 NULL-aware left anti，相关场景显式补 NULL 条件 |
-| scalar 行数 | 非聚合 scalar 增加 `count + any_value + assert_true` |
-| 空输入 `COUNT` | left join 后以 `NVL` 修复应返回 0 的语义，见 [SubqueryToApply.java](../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/analysis/SubqueryToApply.java#L524-L563) |
-| 简单相关 aggregate | 把内侧相关表达式加入 group key |
-| 特定 aggregate scalar | `AggScalarSubQueryToWindowFunction` 可用窗口避免重复扫描 |
-| 后续优化 | Apply 最终变成普通 join，可继续参加 join reorder、分布规划和 CBO |
+
+| 能力                                     | 当前处理                                                                                                                                                        |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `IN/NOT IN`、`EXISTS/NOT EXISTS`、scalar | 转成 semi/anti/mark/outer join                                                                                                                                |
+| OR 等复杂布尔上下文                            | mark join 保存布尔结果                                                                                                                                            |
+| `NOT IN` + NULL                        | uncorrelated nullable 场景使用 NULL-aware left anti，相关场景显式补 NULL 条件                                                                                             |
+| scalar 行数                              | 非聚合 scalar 增加 `count + any_value + assert_true`                                                                                                             |
+| 空输入 `COUNT`                            | left join 后以 `NVL` 修复应返回 0 的语义，见 [SubqueryToApply.java](../fe/fe-core/src/main/java/org/apache/doris/nereids/rules/analysis/SubqueryToApply.java#L524-L563) |
+| 简单相关 aggregate                         | 把内侧相关表达式加入 group key                                                                                                                                        |
+| 特定 aggregate scalar                    | `AggScalarSubQueryToWindowFunction` 可用窗口避免重复扫描                                                                                                              |
+| 后续优化                                   | Apply 最终变成普通 join，可继续参加 join reorder、分布规划和 CBO                                                                                                              |
+
+
+
 
 ### 4.3 明确的分析期和 rewrite 限制
 
@@ -429,25 +457,31 @@ scalar 的最后转换还要求所有相关 predicate 都是 `EqualTo`，见
 
 ### 4.4 能力矩阵
 
-| 场景 | 当前 Doris | 2025 目标 | 差距性质 |
-|---|---|---|---|
-| 单层等值 correlated EXISTS/IN | 支持 | 支持 | 已具备 |
-| 单层 scalar aggregate | 部分支持 | 支持 | operator/predicate 受限 |
-| scalar 非等值相关谓词 | 拒绝 | 支持 | rewrite 不完备 |
-| 父层 + 祖父层引用 | binder 无法表达 | 支持 | IR/作用域缺失 |
-| 两处访问同一外层绑定 | 拒绝 | 支持 | 全局状态缺失 |
-| correlated TopN/OFFSET | 拒绝 | 分区 ROW_NUMBER | operator rule 缺失 |
-| correlated window | 拒绝 | 扩展 partition key | operator rule 缺失 |
-| correlated set operation | 拒绝 | 各 child 传播绑定 | operator rule 缺失 |
-| outer join 内相关访问 | 多数拒绝 | 按 preserved side 处理 | operator rule 缺失 |
-| full join condition 同时依赖两侧 | 拒绝 | 先支持论文 singleton 特例 | join condition IR 缺失 |
-| shared correlated CTE | 无 holistic DAG 处理 | producer 一次转换 | DAG 索引缺失 |
-| correlated recursive CTE | 不支持；测试中被注释 | 绑定穿过迭代 | recursive rule 缺失 |
-| 选择性绑定域下推 | 无显式 `D` | 支持 | 主要性能缺口 |
-| `D` 与列替换 cost choice | 无 | Apply 边界完整等价候选 | CBO 集成缺失 |
-| unsupported fallback | 规划失败 | 可选物理 Apply | 执行能力缺失 |
+
+| 场景                         | 当前 Doris          | 2025 目标             | 差距性质                  |
+| -------------------------- | ----------------- | ------------------- | --------------------- |
+| 单层等值 correlated EXISTS/IN  | 支持                | 支持                  | 已具备                   |
+| 单层 scalar aggregate        | 部分支持              | 支持                  | operator/predicate 受限 |
+| scalar 非等值相关谓词             | 拒绝                | 支持                  | rewrite 不完备           |
+| 父层 + 祖父层引用                 | binder 无法表达       | 支持                  | IR/作用域缺失              |
+| 两处访问同一外层绑定                 | 拒绝                | 支持                  | 全局状态缺失                |
+| correlated TopN/OFFSET     | 拒绝                | 分区 ROW_NUMBER       | operator rule 缺失      |
+| correlated window          | 拒绝                | 扩展 partition key    | operator rule 缺失      |
+| correlated set operation   | 拒绝                | 各 child 传播绑定        | operator rule 缺失      |
+| outer join 内相关访问           | 多数拒绝              | 按 preserved side 处理 | operator rule 缺失      |
+| full join condition 同时依赖两侧 | 拒绝                | 先支持论文 singleton 特例  | join condition IR 缺失  |
+| shared correlated CTE      | 无 holistic DAG 处理 | producer 一次转换       | DAG 索引缺失              |
+| correlated recursive CTE   | 不支持；测试中被注释        | 绑定穿过迭代              | recursive rule 缺失     |
+| 选择性绑定域下推                   | 无显式 `D`           | 支持                  | 主要性能缺口                |
+| `D` 与列替换 cost choice       | 无                 | Apply 边界完整等价候选      | CBO 集成缺失              |
+| unsupported fallback       | 规划失败              | 可选物理 Apply          | 执行能力缺失                |
+
+
+
 
 ## 5. Doris 的核心缺陷
+
+
 
 ### P0：绑定模型只能描述直接父层
 
@@ -467,6 +501,8 @@ scalar 的最后转换还要求所有相关 predicate 都是 `EqualTo`，见
 - 论文中的深层祖先引用通常在 binder/validator 阶段失败；
 - 对已支持的局部嵌套模式，多个 Apply 仍被相互独立地 bottom-up 改写；
 - 对单层相关 aggregate，内表往往先按全部相关 key 聚合，错失只处理外层实际绑定集合的机会。
+
+
 
 ### P0：operator 覆盖面靠白名单
 
@@ -520,6 +556,8 @@ logical group。
 
 ## 6. 目标架构
 
+
+
 ### 6.1 阶段位置
 
 建议的新主链路：
@@ -554,7 +592,9 @@ sealed interface HolisticResult {
 - `DeclinedLegacySafe` 只用于 legacy analyzer 原本就接受的 shape，随后可运行旧规则；
 - feature flag 新放开的 shape 若 capability preflight 不通过，返回稳定的 `Unsupported`，不能送入旧规则；
 - preflight 之后 handler 缺失、repr 不可见或 validator 失败均是优化器 bug，直接 check/fail fast，不得
-  伪装成用户不支持；immutable candidate保证失败时不会把半改写树交给后续规则。
+伪装成用户不支持；immutable candidate保证失败时不会把半改写树交给后续规则。
+
+
 
 ### 6.2 完整作用域绑定
 
@@ -592,7 +632,7 @@ lineage，不能单独充当 identity。
 改造 `ExpressionAnalyzer.visitUnboundSlot`：
 
 1. 每个 query-block lexical scope 分配 statement-local `ScopeId`，每个 subquery/Apply 边界另分配
-   `ApplyId`；块内为 Project/Aggregate/Sort 等创建的派生 `new Scope(...)` 必须继承同一 `ScopeId`，
+  `ApplyId`；块内为 Project/Aggregate/Sort 等创建的派生 `new Scope(...)` 必须继承同一 `ScopeId`，
    不能按 Java `Scope` 对象身份反复分配；
 2. 当前 scope 未命中时沿已有 `Scope.outerScope` 完整链查找，不再只 bind previous level；
 3. 命中后用 provider scope 的 ID 和原 slot `ExprId` 生成 `OuterReferenceSlot`；
@@ -695,11 +735,11 @@ CTE 不能简单把 producer 内联多次。索引层将 DAG 分解为：
 - producer 为独立转换树；
 - 每个 consumer 是访问代理叶子；
 - 先汇总所有 consumer 的 accessing/binding requirements，构造按 owner/key 排序的 canonical union
-  binding layout；
+binding layout；
 - 只触发一次 producer rewrite，各 consumer 再用 branch-local fresh Slot map投影所需子集；
 - branch-local substitution/equivalence 不穿过 tree-cut，producer输入只接受 canonical exact-D state；
 - owner、row-identity 或 repeatability requirements无法合并时，preflight 原子拒绝，不能克隆 materialized
-  producer来假装支持。
+producer来假装支持。
 
 同一共享节点在不同 active-correlation 集合下可能有不同 access summary。缓存键必须包含排序后的
 `ApplyId` 及其 outer-owner `ScopeId` fingerprint；不能像普通树那样只以 Plan identity 缓存。Phase 1
@@ -841,15 +881,19 @@ rewrite inner.right
 四个细节是实现验收点：
 
 1. nested Apply 有 parent state 时必须始终处理 inner left；即使 `leftAccesses` 为空，也要在正常 stop
-   point 把 parent D/representative 附到 left，child D 才来自实际可达的联合 binding；
+  point 把 parent D/representative 附到 left，child D 才来自实际可达的联合 binding；
 2. `DomainSpec` 是 lazy 描述，直到 stop point 才插入 placeholder；如果祖先 pass 先停止，后代 Apply
-   之后仍按 root-first 顺序独立处理；
+  之后仍按 root-first 顺序独立处理；
 3. `attachExplicitDomain` 为每个 branch 生成 fresh binding slots，返回 output map；不能把同一 `ExprId`
-   同时放在 domain 和 target subtree；
+  同时放在 domain 和 target subtree；
 4. handler 未覆盖应在 preflight 返回 unsupported；若 rewrite 阶段才发现 handler 缺失、repr 不可见或
-   replacement 冲突，则作为内部错误终止；任何情况都不留下半相关计划。
+  replacement 冲突，则作为内部错误终止；任何情况都不留下半相关计划。
+
+
 
 ## 7. 各 operator 的转换规则
+
+
 
 ### 7.1 Handler contract
 
@@ -872,26 +916,28 @@ check/assert 报 optimizer bug。handler 不得自己搜索祖先、重新构造
 
 ### 7.2 Transfer-function 矩阵
 
-| Operator | 规则 | 关键正确性点 |
-|---|---|---|
-| Filter | 用 `repr` 重写 outer ref；从安全 conjunct 更新 scoped equivalence | OR 保持原形；普通 `=` 不升级为 NULL-safe，也不擅自删除 |
-| Project/Map | 携带仍被访问的代表列；重写表达式；更新 alias 映射 | 不得丢失后续 operator 所需 `ExprId` |
-| Aggregate | 把 binding repr 加入 group key/grouping sets，输出辅助列 | aggregate function 不消费辅助列；保持 bag 语义 |
-| Static Aggregate | 先按 binding 聚合，再用 exact D left join恢复缺组 | empty result按函数 metadata；不能 `COUNT(*)` null-padding 行 |
-| Window | binding repr 加入所有相关 window 的 `PARTITION BY` | 不改变每个绑定内部 order/frame |
-| Inner/Cross Join | 按 access 推一侧或 fork 两侧；双侧逐 key `<=>` | branch state 独立 clone 后合并，无跨 binding 笛卡尔积 |
-| Semi/Anti/Mark Join | binding 传播到实际 output/preserved side | Mark/NOT IN 的 UNKNOWN 继续由现有 join contract 实现 |
-| Left Join | 优先使用 preserved left repr；必要时两侧 NULL-safe 重连 | unmatched right row 不能丢 binding |
-| Right Join | 与 left 对称 | preserved right |
-| Full Join | 两侧分别传播，输出 `COALESCE(left_repr,right_repr)` | 两侧 unmatched row 都保留 |
-| Union All | 每个 child 追加同构 binding output | 保持重复 |
-| Union/Intersect/Except | 每个 child 带 binding 执行原 ALL/DISTINCT 语义 | binding 成为比较的一部分，schema/nullable/位置完全对齐 |
-| Distinct | binding 加入 distinct target | 只隔离 binding，不改变原 distinct 列集合的用户可见输出 |
-| Sort | 无 Limit 且子查询语义不观察顺序时可由既有规则删除；否则每 binding 排序 | 不能把 global order 当作 per-binding order |
-| Limit/TopN | `ROW_NUMBER() OVER (PARTITION BY binding ORDER BY keys)`，过滤 `offset < rn <= checkedUpper` | 常量 limit/offset；checked overflow；原 NULL order；WITH TIES/PERCENT 另行处理 |
-| CTE Producer/Consumer | producer 转换一次，consumer 传递 canonical binding slots | DAG 全部访问点一致 |
-| Recursive Union | binding 穿过 seed、recursive term、work table | 迭代 schema、distinct/union-all 和终止条件不变 |
-| Values/OneRow/Generate | 每个 row/expression改写并追加 binding layout | table function 的 repeatability/side effect 单独判定 |
+
+| Operator               | 规则                                                                                        | 关键正确性点                                                               |
+| ---------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Filter                 | 用 `repr` 重写 outer ref；从安全 conjunct 更新 scoped equivalence                                  | OR 保持原形；普通 `=` 不升级为 NULL-safe，也不擅自删除                                 |
+| Project/Map            | 携带仍被访问的代表列；重写表达式；更新 alias 映射                                                              | 不得丢失后续 operator 所需 `ExprId`                                          |
+| Aggregate              | 把 binding repr 加入 group key/grouping sets，输出辅助列                                           | aggregate function 不消费辅助列；保持 bag 语义                                  |
+| Static Aggregate       | 先按 binding 聚合，再用 exact D left join恢复缺组                                                    | empty result按函数 metadata；不能 `COUNT(*)` null-padding 行                |
+| Window                 | binding repr 加入所有相关 window 的 `PARTITION BY`                                               | 不改变每个绑定内部 order/frame                                                |
+| Inner/Cross Join       | 按 access 推一侧或 fork 两侧；双侧逐 key `<=>`                                                       | branch state 独立 clone 后合并，无跨 binding 笛卡尔积                            |
+| Semi/Anti/Mark Join    | binding 传播到实际 output/preserved side                                                       | Mark/NOT IN 的 UNKNOWN 继续由现有 join contract 实现                         |
+| Left Join              | 优先使用 preserved left repr；必要时两侧 NULL-safe 重连                                               | unmatched right row 不能丢 binding                                      |
+| Right Join             | 与 left 对称                                                                                 | preserved right                                                      |
+| Full Join              | 两侧分别传播，输出 `COALESCE(left_repr,right_repr)`                                                | 两侧 unmatched row 都保留                                                 |
+| Union All              | 每个 child 追加同构 binding output                                                              | 保持重复                                                                 |
+| Union/Intersect/Except | 每个 child 带 binding 执行原 ALL/DISTINCT 语义                                                    | binding 成为比较的一部分，schema/nullable/位置完全对齐                              |
+| Distinct               | binding 加入 distinct target                                                                | 只隔离 binding，不改变原 distinct 列集合的用户可见输出                                 |
+| Sort                   | 无 Limit 且子查询语义不观察顺序时可由既有规则删除；否则每 binding 排序                                               | 不能把 global order 当作 per-binding order                                |
+| Limit/TopN             | `ROW_NUMBER() OVER (PARTITION BY binding ORDER BY keys)`，过滤 `offset < rn <= checkedUpper` | 常量 limit/offset；checked overflow；原 NULL order；WITH TIES/PERCENT 另行处理 |
+| CTE Producer/Consumer  | producer 转换一次，consumer 传递 canonical binding slots                                         | DAG 全部访问点一致                                                          |
+| Recursive Union        | binding 穿过 seed、recursive term、work table                                                 | 迭代 schema、distinct/union-all 和终止条件不变                                 |
+| Values/OneRow/Generate | 每个 row/expression改写并追加 binding layout                                                     | table function 的 repeatability/side effect 单独判定                      |
+
 
 Join 的单侧优化条件不能只问“另一侧是否访问 outer ref”。还必须考虑当前 join 是否会从另一侧产生
 unmatched row，以及 semi/anti/mark/single 是否对 partner 数量敏感；只要不能证明单侧代表覆盖全部输出，
@@ -955,19 +1001,19 @@ aggregate 时才可能正确；`COUNT(*)` 会把 outer join 的 null-padding 行
 去相关只消除 free variables，不得顺便消掉子查询结果合同：
 
 - **Scalar/Single**：每 binding 的 RHS bag 为 0 行时返回 NULL，1 行时返回该值，2 行及以上报错；
-  两个相同值、两个 NULL 也算两行。只有 `CardinalityContract` 证明单一 global grouping set、
-  grouping/相关等式/FD 固定每 binding最多一组或完整 unique key，或已经完成 per-binding lowering 的
-  `limit <= 1` 时才可省 Max1；否则
-  第一版在 domain-bound RHS 上增加不可空 row marker，按 binding 计算 `COUNT(marker)` +
-  `ANY_VALUE(value)`，用现有 `AssertTrue(count <= 1)` 逐 binding 校验；终局可增加 partition-aware
-  Max1/Single 物理合同。
+两个相同值、两个 NULL 也算两行。只有 `CardinalityContract` 证明单一 global grouping set、
+grouping/相关等式/FD 固定每 binding最多一组或完整 unique key，或已经完成 per-binding lowering 的
+`limit <= 1` 时才可省 Max1；否则
+第一版在 domain-bound RHS 上增加不可空 row marker，按 binding 计算 `COUNT(marker)` +
+`ANY_VALUE(value)`，用现有 `AssertTrue(count <= 1)` 逐 binding 校验；终局可增加 partition-aware
+Max1/Single 物理合同。
 - **EXISTS/NOT EXISTS**：只有顶层 filter 的安全 conjunct可转 semi/anti；位于 OR、SELECT、CASE、join
-  predicate 等需要向上返回值的上下文必须保留 existence Mark，但其结果始终二值；outer join 产生的
-  missing marker需按现有语义 `NVL(..., FALSE)`，RHS predicate 的 UNKNOWN 只是不匹配。global aggregate
-  即使 raw input 为空也有一行，因此必须在 static aggregate 恢复之后判断 existence。
+predicate 等需要向上返回值的上下文必须保留 existence Mark，但其结果始终二值；outer join 产生的
+missing marker需按现有语义 `NVL(..., FALSE)`，RHS predicate 的 UNKNOWN 只是不匹配。global aggregate
+即使 raw input 为空也有一行，因此必须在 static aggregate 恢复之后判断 existence。
 - **IN/NOT IN**：相关谓词中的 outer ref 被普通 slot 取代，但 TRUE/FALSE/UNKNOWN、RHS empty、
-  outer NULL 和 inner NULL 仍交给 Doris 现有 Mark/NULL-aware join lowering；形式化论文的二值 predicate
-  模型不能作为这部分三值语义的证明。
+outer NULL 和 inner NULL 仍交给 Doris 现有 Mark/NULL-aware join lowering；形式化论文的二值 predicate
+模型不能作为这部分三值语义的证明。
 - **Lateral left**：无 RHS row时要 null-extend；lateral inner/cross 保留原 bag multiplicity。
 
 SQL quantified comparison `ANY/ALL` 需要额外的 quantifier + comparison-operator IR 和独立 3VL truth
@@ -1017,6 +1063,8 @@ bag matrix合入前继续由 preflight 拒绝；当前文档只固定 phase boun
 已经足够表达。
 
 ## 8. `D` 的构造与 MPP 执行
+
+
 
 ### 8.1 `DomainSpec` 与逻辑构造
 
@@ -1076,17 +1124,17 @@ rewritten-right
 
 `LogicalDomainJoin`（若实现为临时节点）只允许存在于候选 rewrite 内，不能进入 Memo。lowerer 按策略生成：
 
-1. **`DUPLICATE_TREE`**：像 Spark 一样复制 `DETERMINISTIC_PER_BINDING` source，一份保留为原 L，一份
-   计算 D；文件少、适合 Phase 1 vertical slice，但 plan size 和执行成本更高。`ONCE_PER_OUTER_ROW`、
+1. `DUPLICATE_TREE`：像 Spark 一样复制 `DETERMINISTIC_PER_BINDING` source，一份保留为原 L，一份
+  计算 D；文件少、适合 Phase 1 vertical slice，但 plan size 和执行成本更高。`ONCE_PER_OUTER_ROW`、
    volatile、`NoneMovableFunction`、may-throw 或 side-effect source 禁止使用；Phase 1 只接受
    repeatable + total 的 source，否则必须先有 forced sharing或返回 unsupported。不能把同一个 Plan
    对象或同一组 `ExprId` 直接挂到两个 sibling；D 分支使用现有
    `LogicalPlanDeepCopier + DeepCopierContext.exprIdReplaceMap`，先把 key映射到 copied slots，再生成
    fresh domain aliases。
-2. **`FORCED_INTERNAL_CTE`**：生成一份 `LogicalCTEProducer(source)`，原 L 和 D 各用一个 consumer；D 再由
-   consumer 上的 distinct aggregate 产生。该 CTE 是 correctness/sharing contract，不得被普通阈值内联。
-3. **`PHYSICAL_DELIM`**：同一 LHS pipeline 同时供给原分支与 distinct domain，多处 domain scan 共享；
-   只有 CTE 路径的正确性和性能数据证明不足时才进入 BE 设计。
+2. `FORCED_INTERNAL_CTE`：生成一份 `LogicalCTEProducer(source)`，原 L 和 D 各用一个 consumer；D 再由
+  consumer 上的 distinct aggregate 产生。该 CTE 是 correctness/sharing contract，不得被普通阈值内联。
+3. `PHYSICAL_DELIM`：同一 LHS pipeline 同时供给原分支与 distinct domain，多处 domain scan 共享；
+  只有 CTE 路径的正确性和性能数据证明不足时才进入 BE 设计。
 
 Doris 已有 `LogicalCTEAnchor/Producer/Consumer`、physical CTE 节点和
 `StatementContext.addForceMaterializeCTE`。当前较新的 `CTEInliner` 在常规候选路径检查 force 标记，
@@ -1157,11 +1205,11 @@ Alternative B (superset substitution):
 - `BindingRef.provenance=LOCAL_SUPERSET`，最终 join-back 在 validator 前不可被删；
 - scalar/mark/empty-input semantic operators在两个候选中位置等价；
 - substitution 只可能省掉 stop-point 的 D join，不能删除仍被 static-aggregate restorer用作 empty-binding
-  value generator 的 exact D。若没有等价 generator，COUNT/COALESCE/HAVING 或 global-aggregate EXISTS
-  的 substitution proof 直接失败；
+value generator 的 exact D。若没有等价 generator，COUNT/COALESCE/HAVING 或 global-aggregate EXISTS
+的 substitution proof 直接失败；
 - stop point 到最终 join-back 之间若有 may-throw expression、semantic assert、volatile/side effect，
-  LOCAL_SUPERSET 可能在本应被 join-back过滤的额外 tuple 上新增错误或求值，因此禁止 substitution；
-  除非计划已保证 join-back 在这些表达式求值之前发生。
+LOCAL_SUPERSET 可能在本应被 join-back过滤的额外 tuple 上新增错误或求值，因此禁止 substitution；
+除非计划已保证 join-back 在这些表达式求值之前发生。
 
 Phase 1 总是选 A。后续可让 `UnnestingAlternativeBuilder` 在 Apply 边界生成两棵完整普通计划，再把
 它们插入同一 Memo group；不能在 stop point 用 `LogicalCorrelationDomainChoice` 欺骗 logical property。
@@ -1188,44 +1236,46 @@ cost(substitution) =
 新 pass 完成时由专用 validator 和 Java check/precondition 验证：
 
 1. **Ownership**：每个 outer reference唯一归属一个 provider `ScopeId`；每个 access site在当前
-   `ApplyId` 下只消费其 binding boundary 可见的 key；sibling Apply 不串线，最近作用域遮蔽正确；
+  `ApplyId` 下只消费其 binding boundary 可见的 key；sibling Apply 不串线，最近作用域遮蔽正确；
 2. **Complete lowering**：计划中不存在 `OuterReferenceSlot`、free correlated slot、待处理
-   `LogicalApply` 或 `LogicalDomainJoin`；
+  `LogicalApply` 或 `LogicalDomainJoin`；
 3. **Visible output**：根的用户可见 output 数量、顺序、`ExprId`、type、nullable 与候选前一致；隐藏
-   binding/marker/row-id 在最后 consumer 后全部裁掉；
+  binding/marker/row-id 在最后 consumer 后全部裁掉；
 4. **Domain coverage**：exact D 等于真实 rewritten L 的 binding projection；superset D/representation
-   必须带 proof，并保留最终 join-back；
+  必须带 proof，并保留最终 join-back；
 5. **Domain set semantics**：每个 binding tuple multiplicity 为 1，NULL tuple 参与集合；只去重 D，
-   不去重原 L/R bag；
+  不去重原 L/R bag；
 6. **Fresh schema**：每次 domain/branch alias 均为 fresh `ExprId`，与下推路径所有 schema 不相交；
 7. **Replacement graph**：无环、无冲突，每个 old public output 和 `repr(c)` 在当前 boundary 有且仅有
-   一个真实可见 target；
+  一个真实可见 target；
 8. **Equality kind**：domain identity/双 branch/join-back 使用 `NullSafeEqual`；原 SQL 普通 `=`、
-   non-equi 和 3VL 不改变；
+  non-equi 和 3VL 不改变；
 9. **Per-binding barriers**：Aggregate、Distinct、Window、SetOp、TopN 和 Max1 都包含完整 binding
-   partition/layout；
+  partition/layout；
 10. **Static aggregate**：每个 D binding 即使 raw inner 为空也经过 empty-result/HAVING 语义；match
-    detection 不使用 nullable 业务列；
+  detection 不使用 nullable 业务列；
 11. **Scalar**：0/1/>1 合同仍由可见的 Max1/assert/Single 等价结构保证，除非上述
-    `CardinalityContract` 有完整 `<=1 per binding` 证明；
+  `CardinalityContract` 有完整 `<=1 per binding` 证明；
 12. **Mark semantics**：EXISTS/NOT EXISTS marker始终二值；IN/NOT IN 的 TRUE/FALSE/UNKNOWN、RHS
-    empty、outer/inner NULL 继续满足现有 truth table；
+  empty、outer/inner NULL 继续满足现有 truth table；
 13. **Join preservation**：outer/full unmatched row拥有正确代表，full representative来自两侧
-    `COALESCE`；
+  `COALESCE`；
 14. **Repeatability**：distinct D 只用于 `DETERMINISTIC_PER_BINDING`；row-sensitive path包含在 fan-out
-    前生成的稳定 row identity，且 D key、RHS partition 和最终 join-back都包含它，否则明确 fallback；
+  前生成的稳定 row identity，且 D key、RHS partition 和最终 join-back都包含它，否则明确 fallback；
 15. **DAG/recursive**：access annotation按 context隔离，但同一 materialized producer在 statement 内
-    汇总 compatible requirements后只 rewrite/execute一次；所有 consumers 可从 canonical union layout
+  汇总 compatible requirements后只 rewrite/execute一次；所有 consumers 可从 canonical union layout
     投影所需子集，seed/step/work-table binding schema 同构；
 16. **Traversal**：普通树节点对一个 active context至多由主算法访问一次；DAG cache 以 context
-    fingerprint 区分，不能串用 annotation；
+  fingerprint 区分，不能串用 annotation；
 17. **Condition ownership**：每个 original `PredicateId` 在 ledger 中恰有一个终态；RHS predicate、
-    boundary theta 和 semantic compare 无 duplicate/missing，final condition 的 input slots均来自对应 children。
+  boundary theta 和 semantic compare 无 duplicate/missing，final condition 的 input slots均来自对应 children。
 
 这些是成功候选的确定性条件，不应写成“条件不满足就继续生成计划”的防御分支。破坏不变量是 FE
 内部错误；只有 capability preflight 才能返回用户可见 unsupported，只有明确 legacy-safe 才能回退。
 
 ## 10. 分阶段实现
+
+
 
 ### 10.1 Phase 0：foundation/shadow mode，不改用户行为
 
@@ -1246,7 +1296,7 @@ phase 不生成 domain 或改变 plan。
 - Domain placeholder 单独 lower 为 duplicate-tree Aggregate + Join；
 - 第一批 aggregate 为 MIN/MAX/SUM/AVG，COUNT/用户 aggregate在 static contract完成前保持 unsupported；
 - 不支持 HAVING/grouping sets；Aggregate 上方 Project 只允许 direct alias 或已证明在所有 aggregate
-  empty-result 为 NULL 时仍 null-propagating 的表达式，`COALESCE/IFNULL` 等延后到 static restore；
+empty-result 为 NULL 时仍 null-propagating 的表达式，`COALESCE/IFNULL` 等延后到 static restore；
 - 以 2015 Q2（id/year/major + OR + non-equi）和 Doris 现有 non-EQ error cases 为 vertical test；
 - 成功后运行 no-Apply/no-outer-ref/no-domain validator。
 
@@ -1256,7 +1306,7 @@ phase 不生成 domain 或改变 plan。
 ### 10.3 Phase 2：真正的 holistic nested Apply
 
 - 先实现 nested correctness 必需的最小 `StaticAggregateRestorer`：global COUNT/SUM/MIN/MAX/AVG、
-  empty binding恢复、无 HAVING/grouping sets；这是 ancestor key穿过 nested-left 的前置，不是可延后优化；
+empty binding恢复、无 HAVING/grouping sets；这是 ancestor key穿过 nested-left 的前置，不是可延后优化；
 - `ExpressionAnalyzer` 沿完整 outer scope chain，RHS 中保留 owner-aware expression；
 - root-first 调度、parent state、nested-left-first、parent accesses 合并到 child right；
 - 支持 2～6 层父/祖父引用，先限于 Phase 1 的 unary operator 集；
@@ -1304,22 +1354,24 @@ differential result，row-identity corpus必须验证单一 producer。
 
 ### 10.7 建议的 PR 边界
 
-| PR | 只包含 | 明确不包含 |
-|---|---|---|
-| A | owner/access/index/replacement graph shadow infrastructure | analyzer 放开、结果变化 |
-| B | 单层 Q2 explicit-D vertical slice + validator | nested、COUNT、Join/SetOp |
-| C0 | global builtin static restore/COUNT/empty binding（无 HAVING） | nested、Mark、grouping sets |
-| C | scope chain + parent-aware nested unary path | outer join、CTE DAG |
-| D1 | static HAVING/function metadata/Max1/Mark | Window/SetOp |
-| D2a | Join handlers（按 join type逐项启用） | SetOp/Window/TopN |
-| D2b | SetOp ALL/DISTINCT handlers | Window/TopN/CTE |
-| D2c | Window 与常量 TopN/OFFSET handlers | CTE/recursive |
-| E1 | forced internal domain CTE + CTE context/inliner contract | user CTE DAG |
-| E2 | user CTE DAG tree-cut 与 consumer layout | recursive CTE |
-| E3 | recursive seed/step/work-table bindings | row identity |
-| E4 | full-join condition multi-input singleton mini-design | row identity |
-| E5 | `ONCE_PER_OUTER_ROW` row identity | physical Apply（独立评估） |
-| F | 完整候选 alternatives、统计/分布 cost、默认开关 | 新 SQL 语义 |
+
+| PR  | 只包含                                                         | 明确不包含                     |
+| --- | ----------------------------------------------------------- | ------------------------- |
+| A   | owner/access/index/replacement graph shadow infrastructure  | analyzer 放开、结果变化          |
+| B   | 单层 Q2 explicit-D vertical slice + validator                 | nested、COUNT、Join/SetOp   |
+| C0  | global builtin static restore/COUNT/empty binding（无 HAVING） | nested、Mark、grouping sets |
+| C   | scope chain + parent-aware nested unary path                | outer join、CTE DAG        |
+| D1  | static HAVING/function metadata/Max1/Mark                   | Window/SetOp              |
+| D2a | Join handlers（按 join type逐项启用）                              | SetOp/Window/TopN         |
+| D2b | SetOp ALL/DISTINCT handlers                                 | Window/TopN/CTE           |
+| D2c | Window 与常量 TopN/OFFSET handlers                             | CTE/recursive             |
+| E1  | forced internal domain CTE + CTE context/inliner contract   | user CTE DAG              |
+| E2  | user CTE DAG tree-cut 与 consumer layout                     | recursive CTE             |
+| E3  | recursive seed/step/work-table bindings                     | row identity              |
+| E4  | full-join condition multi-input singleton mini-design       | row identity              |
+| E5  | `ONCE_PER_OUTER_ROW` row identity                           | physical Apply（独立评估）      |
+| F   | 完整候选 alternatives、统计/分布 cost、默认开关                           | 新 SQL 语义                  |
+
 
 每个 PR 的 analyzer relaxation 与 handler/test 同批提交；不得先接受一种 SQL shape、再依赖未来 PR
 补正确 rewrite。
@@ -1348,25 +1400,29 @@ FE metrics按 reason 聚合，不记录 SQL literal、列值或完整 query text
 
 ## 11. 测试方案
 
+
+
 ### 11.1 FE 单测
 
 - `OuterRefKey/OuterReferenceSlot`：最近作用域遮蔽、父/祖父层、同名列、同一 `ExprId` 不同 owner、
-  同一 query block派生 Scope复用 ID、sibling subquery共享 provider但 ApplyId不同、join conjunct；并验证
-  `getInputSlots/getInputSlotExprIds`、visitor、`ExpressionUtils.replace`、所有
-  `withXxx` 与 deep copy 都不丢 provider；
+同一 query block派生 Scope复用 ID、sibling subquery共享 provider但 ApplyId不同、join conjunct；并验证
+`getInputSlots/getInputSlotExprIds`、visitor、`ExpressionUtils.replace`、所有
+`withXxx` 与 deep copy 都不丢 provider；
 - plan index：local/subtree access、ancestor/LCA、nested parent、context-sensitive CTE cache；
 - replacement graph：传递 resolve、插入顺序、branch clone/merge、冲突、环、boundary output missing；
 - condition ledger：RHS correlated predicate、boundary theta、IN semantic compare在 simple/OR/non-equi/
-  nested parent rewrite后各出现一次，状态迁移无 duplicate/missing；
+nested parent rewrite后各出现一次，状态迁移无 duplicate/missing；
 - scoped equivalence：普通 `=`/`<=>`、null rejection、outer-join scope、project rename；
 - `DomainSpec`：exact source、fresh/disjoint `ExprId`、NULL composite key；nullable unique + 两个 NULL
-  必须保留 Aggregate，non-null/nulls-not-distinct unique才允许 Project shortcut；
+必须保留 Aggregate，non-null/nulls-not-distinct unique才允许 Project shortcut；
 - domain key semantics：GROUP BY/`NullSafeEqual`/hash 对 NULL、NaN、collation一致；不可比较复杂类型稳定拒绝；
 - 每个 handler 的 capability/preflight、输入/输出 map 和 negative path；
 - static aggregate zero-tuple evaluator、HAVING 和 match marker；
 - per-binding scalar 0/1/>1 assert 与 Max1 elimination proof；
 - semantic barrier：上层 Project 不输出 assert helper时，`NoneMovableFunction` 仍保留并实际触发错误；
 - atomic result state和 final validator 的每条 invariant。
+
+
 
 ### 11.2 Regression
 
@@ -1382,30 +1438,32 @@ holistic_unnesting_cte.groovy
 
 最小交叉矩阵如下：
 
-| 类别 | 必测数据/shape | 断言 |
-|---|---|---|
-| 2015 Q1 | EQ scalar MIN；nullable sid | 旧快路径等价；普通 `=` 的 null rejection 未丢 |
-| 2015 Q2 | OR + AND；id/year/major；non-equi | 无需拆 OR；生成 exact D；结果正确 |
-| Multiplicity | L 同 binding 1/2/100 行；R 重复 | D 一行；join-back 恢复 L bag |
-| NULL identity | 单/复合 outer key NULL；inner NULL | D NULL binding不丢；原 predicate 仍 3VL |
-| Hidden output | 多层 Alias/Project/Distinct | binding 到最后 consumer前可见，最终被裁掉 |
-| Empty aggregate | COUNT(*), COUNT(nullable), SUM/MIN/MAX/AVG × inner 0/1/many | 每 binding default 与 HAVING 正确 |
-| Empty vs NULL row | RHS 无行；RHS 一行业务值 NULL | match marker能区分两者 |
-| Scalar | 每 binding 0/1/2 行；两行相同/不同/全 NULL | 0→NULL、1→值、2→error |
-| Grouped scalar | 普通 group 0/1/2 groups；global `()` | Max1 不因追加 D key 消失；global empty正确恢复 |
-| Mixed grouping sets | mixed/duplicate sets；GROUPING_ID | 初版 preflight 稳定拒绝；专用 handler 后再转结果测试 |
-| Window | rank/row_number/frame；各 binding 数据量不同 | partition完全隔离 |
-| TopN | limit 0/1/MAX、多行、offset近上界、tie、NULL order | checked upper不溢出；未支持 variant 稳定报错 |
-| SetOp | UNION/INTERSECT/EXCEPT ALL/DISTINCT | 每 binding bag/set count 正确 |
-| Union constant rows | `constantExprsList` × NULL/duplicate binding | 首版稳定拒绝或 normalization 后每 binding复制且 layout正确 |
-| Join | inner单/双侧 access；left/right/full matched/unmatched | branch `<=>` 和 representative 正确 |
-| Exists Mark | EXISTS/NOT EXISTS；RHS predicate UNKNOWN/empty；OR/value context | 始终 TRUE/FALSE，missing marker归 FALSE |
-| IN Mark | IN/NOT IN；outer/inner NULL；RHS empty；OR/value context | 完整三值 truth table |
-| Nested | 2～6 层；inner 同时引用 parent/grandparent | 无独立域乘积；最终无 outer ref |
-| CTE | 双 consumer；不同 context；materialize true/false × threshold 0/大值 | producer一次；internal force不受用户变量；layout对齐 |
-| Recursive | seed/step/scan 各读取 binding | 迭代不跨 binding，schema 同构 |
-| Repeatability | random/volatile/side-effect stub；多 tablet/并行 instance | source-wide row-id无碰撞，或 atomic unsupported |
-| Candidate failure | unsupported operator位于深层 | 原计划未半改写；legacy-safe/unsupported 分类正确 |
+
+| 类别                  | 必测数据/shape                                                     | 断言                                           |
+| ------------------- | -------------------------------------------------------------- | -------------------------------------------- |
+| 2015 Q1             | EQ scalar MIN；nullable sid                                     | 旧快路径等价；普通 `=` 的 null rejection 未丢            |
+| 2015 Q2             | OR + AND；id/year/major；non-equi                                | 无需拆 OR；生成 exact D；结果正确                       |
+| Multiplicity        | L 同 binding 1/2/100 行；R 重复                                     | D 一行；join-back 恢复 L bag                      |
+| NULL identity       | 单/复合 outer key NULL；inner NULL                                 | D NULL binding不丢；原 predicate 仍 3VL           |
+| Hidden output       | 多层 Alias/Project/Distinct                                      | binding 到最后 consumer前可见，最终被裁掉                |
+| Empty aggregate     | COUNT(*), COUNT(nullable), SUM/MIN/MAX/AVG × inner 0/1/many    | 每 binding default 与 HAVING 正确                |
+| Empty vs NULL row   | RHS 无行；RHS 一行业务值 NULL                                          | match marker能区分两者                            |
+| Scalar              | 每 binding 0/1/2 行；两行相同/不同/全 NULL                               | 0→NULL、1→值、2→error                           |
+| Grouped scalar      | 普通 group 0/1/2 groups；global `()`                              | Max1 不因追加 D key 消失；global empty正确恢复          |
+| Mixed grouping sets | mixed/duplicate sets；GROUPING_ID                               | 初版 preflight 稳定拒绝；专用 handler 后再转结果测试         |
+| Window              | rank/row_number/frame；各 binding 数据量不同                          | partition完全隔离                                |
+| TopN                | limit 0/1/MAX、多行、offset近上界、tie、NULL order                      | checked upper不溢出；未支持 variant 稳定报错            |
+| SetOp               | UNION/INTERSECT/EXCEPT ALL/DISTINCT                            | 每 binding bag/set count 正确                   |
+| Union constant rows | `constantExprsList` × NULL/duplicate binding                   | 首版稳定拒绝或 normalization 后每 binding复制且 layout正确 |
+| Join                | inner单/双侧 access；left/right/full matched/unmatched             | branch `<=>` 和 representative 正确             |
+| Exists Mark         | EXISTS/NOT EXISTS；RHS predicate UNKNOWN/empty；OR/value context | 始终 TRUE/FALSE，missing marker归 FALSE          |
+| IN Mark             | IN/NOT IN；outer/inner NULL；RHS empty；OR/value context          | 完整三值 truth table                             |
+| Nested              | 2～6 层；inner 同时引用 parent/grandparent                            | 无独立域乘积；最终无 outer ref                         |
+| CTE                 | 双 consumer；不同 context；materialize true/false × threshold 0/大值  | producer一次；internal force不受用户变量；layout对齐     |
+| Recursive           | seed/step/scan 各读取 binding                                     | 迭代不跨 binding，schema 同构                       |
+| Repeatability       | random/volatile/side-effect stub；多 tablet/并行 instance          | source-wide row-id无碰撞，或 atomic unsupported   |
+| Candidate failure   | unsupported operator位于深层                                       | 原计划未半改写；legacy-safe/unsupported 分类正确         |
+
 
 每个结果 query 用 `order_qt` 或 SQL `ORDER BY`；预期错误用 `test { sql; exception }`；测试表在 suite
 开头 drop/create，结束时保留；`.out` 只能由 `run-regression-test.sh` 生成。运行时使用目录和 suite
@@ -1425,8 +1483,10 @@ aggregate group key是 reachable compound binding；Phase 4 的 internal CTE pro
 - 以 `GROUP BY all_columns, COUNT(*)` 或排序后的完整 bag 比较 multiplicity，不能只比较 DISTINCT result；
 - scalar 的“多行报错”也是 oracle result，不只比较成功 rows；
 - DuckDB/PostgreSQL 可做第二 oracle，但只对双方支持且语义一致的 shape；不能用一个实现覆盖论文未证明的
-  Doris Mark/side-effect 合同；
+Doris Mark/side-effect 合同；
 - 每次同时运行结构 validator，防止“结果在小数据碰巧正确但仍有 domain cross product”。
+
+
 
 ### 11.4 性能基准
 
@@ -1453,24 +1513,28 @@ aggregate group key是 reachable compound binding；Phase 4 的 internal CTE pro
 
 ## 12. 风险与控制
 
-| 风险 | 控制 |
-|---|---|
-| bag/NULL 语义回归 | 把 NULL-safe、mark、static aggregate 写成全局 invariant；高权重 fuzz |
-| analyzer 先放开、handler 尚未支持 | capability registry 与 analyzer relaxation 同 PR；unsupported shape 保持稳定错误 |
-| rewrite 与 join reorder 互相破坏 | holistic pass 完成并验证无 free ref 后才进入普通 join reorder |
-| plan identity 在 immutable rewrite 中失效 | pass 内临时 node id；所有位置查询经统一 index |
-| replacement 串错列或形成环 | owner-aware key；显式 old/new boundary；graph 冲突/环 check |
-| 备选计划指数增长 | 只在 Apply 边界生成完整等价候选；statement-level alternative budget |
-| `D` 导致额外 shuffle | composite NDV、distribution 和 runtime-filter 收益共同 costing |
-| duplicate-tree 重复昂贵 outer | deterministic Phase 1 白名单；尽快切 forced internal CTE；profile plan size |
-| internal CTE 被重新 inline | 两条 CTE inliner 都识别 force-materialize；validator 检查 producer/consumer |
-| internal CTE 物化大 L 占用资源 | 统计/内存/落盘成本；pure path可比较 duplicate；row-id path评估 physical delim |
-| user CTE producer 被重复转换 | context-aware tree-cut；producer/context 只处理一次，consumer 用 canonical slots |
-| recursive CTE schema 错位 | seed/worktable/recursive term 的 canonical binding slots 同构校验 |
-| static aggregate/Max1 漏语义 | 独立 semantic contract；match marker；zero-tuple 和 per-binding cardinality matrix |
-| 非确定表达式求值次数改变 | repeatability contract；row identity或拒绝/physical Apply |
-| 新旧规则混合 | immutable candidate；仅 `DeclinedLegacySafe` 回旧路径；success 后不再运行 legacy Apply rules |
-| 参考实现许可证污染 | Materialize 只做概念对照；实现 hunk追溯论文/Apache/Doris clean-room 推导 |
+
+| 风险                                    | 控制                                                                               |
+| ------------------------------------- | -------------------------------------------------------------------------------- |
+| bag/NULL 语义回归                         | 把 NULL-safe、mark、static aggregate 写成全局 invariant；高权重 fuzz                        |
+| analyzer 先放开、handler 尚未支持             | capability registry 与 analyzer relaxation 同 PR；unsupported shape 保持稳定错误          |
+| rewrite 与 join reorder 互相破坏           | holistic pass 完成并验证无 free ref 后才进入普通 join reorder                                |
+| plan identity 在 immutable rewrite 中失效 | pass 内临时 node id；所有位置查询经统一 index                                                 |
+| replacement 串错列或形成环                   | owner-aware key；显式 old/new boundary；graph 冲突/环 check                             |
+| 备选计划指数增长                              | 只在 Apply 边界生成完整等价候选；statement-level alternative budget                           |
+| `D` 导致额外 shuffle                      | composite NDV、distribution 和 runtime-filter 收益共同 costing                         |
+| duplicate-tree 重复昂贵 outer             | deterministic Phase 1 白名单；尽快切 forced internal CTE；profile plan size              |
+| internal CTE 被重新 inline               | 两条 CTE inliner 都识别 force-materialize；validator 检查 producer/consumer              |
+| internal CTE 物化大 L 占用资源               | 统计/内存/落盘成本；pure path可比较 duplicate；row-id path评估 physical delim                   |
+| user CTE producer 被重复转换               | context-aware tree-cut；producer/context 只处理一次，consumer 用 canonical slots         |
+| recursive CTE schema 错位               | seed/worktable/recursive term 的 canonical binding slots 同构校验                     |
+| static aggregate/Max1 漏语义             | 独立 semantic contract；match marker；zero-tuple 和 per-binding cardinality matrix    |
+| 非确定表达式求值次数改变                          | repeatability contract；row identity或拒绝/physical Apply                            |
+| 新旧规则混合                                | immutable candidate；仅 `DeclinedLegacySafe` 回旧路径；success 后不再运行 legacy Apply rules |
+| 参考实现许可证污染                             | Materialize 只做概念对照；实现 hunk追溯论文/Apache/Doris clean-room 推导                        |
+
+
+
 
 ## 13. 建议的代码落点
 
@@ -1530,13 +1594,15 @@ qe/SessionVariable.java                    # feature flag / diagnostics
 
 除新增类外，各 phase 必须显式修改/验证现有入口，而不是假定框架会自动识别新 identity：
 
-| Phase | 现有入口 | 必要改动 |
-|---|---|---|
-| 0/2 | `analyzer/Scope.java`、`StatementScopeIdGenerator.java`/`StatementContext` | 生成并传播独立 `ScopeId/ApplyId` |
-| 1/2 | `ExpressionAnalyzer.java`、`SubExprAnalyzer.java`、`SubqueryToApply.java` | owner-aware bind、capability-gated validator、Apply spec |
-| 0/2 | `ExpressionVisitor.java`、`ExpressionDeepCopier.java`、expression replace utilities | 识别/复制/替换 `OuterReferenceSlot` 且保留 owner |
-| 1 | `LogicalApply.java`、`Rewriter.java`、`RuleType.java` | 新旧路径互斥、planning-only post-condition、trace |
-| 4 | `CTEInline.java`、`CTEInliner.java`、`RewriteCteChildren`/optimizer CTE context | internal force、consumer maps、context refresh |
+
+| Phase | 现有入口                                                                              | 必要改动                                                   |
+| ----- | --------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| 0/2   | `analyzer/Scope.java`、`StatementScopeIdGenerator.java`/`StatementContext`         | 生成并传播独立 `ScopeId/ApplyId`                              |
+| 1/2   | `ExpressionAnalyzer.java`、`SubExprAnalyzer.java`、`SubqueryToApply.java`           | owner-aware bind、capability-gated validator、Apply spec |
+| 0/2   | `ExpressionVisitor.java`、`ExpressionDeepCopier.java`、expression replace utilities | 识别/复制/替换 `OuterReferenceSlot` 且保留 owner                |
+| 1     | `LogicalApply.java`、`Rewriter.java`、`RuleType.java`                               | 新旧路径互斥、planning-only post-condition、trace              |
+| 4     | `CTEInline.java`、`CTEInliner.java`、`RewriteCteChildren`/optimizer CTE context     | internal force、consumer maps、context refresh           |
+
 
 ID 可以由 `StatementScopeIdGenerator` 增加新的强类型 generator，也可由 `StatementContext` 持有计数器；
 无论选择哪处，不能复用 `ExprId/ObjectId/CTEId` 的整数并靠类型外约定区分。
@@ -1593,31 +1659,34 @@ bottom-up 局部算法：既无法支持论文的祖先引用，又可能复现 
 ### 论文
 
 - [Neumann, Kemper: Unnesting Arbitrary Queries, BTW 2015，GI 官方页](https://dl.gi.de/handle/20.500.12116/2418)
-  （LNI P-241, pp.383–402；核心 domain/push-down：论文 PDF pp.6–9 / LNI pp.388–391）
+（LNI P-241, pp.383–402；核心 domain/push-down：论文 PDF pp.6–9 / LNI pp.388–391）
 - [Neumann: Improving Unnesting of Complex Queries, BTW 2025，GI 官方页](https://dl.gi.de/handle/20.500.12116/45881)
-  与 [DOI 10.18420/BTW2025-01](https://doi.org/10.18420/BTW2025-01)
-  （LNI P-361, pp.25–47；主算法 Fig.3–6：PDF pp.9–11；operator §3.3：pp.15–16；
-  复杂结构 §4：pp.16–20）
+与 [DOI 10.18420/BTW2025-01](https://doi.org/10.18420/BTW2025-01)
+（LNI P-361, pp.25–47；主算法 Fig.3–6：PDF pp.9–11；operator §3.3：pp.15–16；
+复杂结构 §4：pp.16–20）
 - [Neumann: A Formalization of Top-Down Unnesting, arXiv:2412.04294](https://arxiv.org/abs/2412.04294)
-  （BTW 2025 引用 2024 v1；本文核验当前 2026 v2；Theorem 4.1/Eq.17：PDF pp.5–6；
-  fresh/disjoint schema：§5 pp.12–13）
+（BTW 2025 引用 2024 v1；本文核验当前 2026 v2；Theorem 4.1/Eq.17：PDF pp.5–6；
+fresh/disjoint schema：§5 pp.12–13）
 - [Fent, Moerkotte, Neumann: Asymptotically Better Query Optimization Using Indexed Algebra,
-  PVLDB 16(11), 2023](https://www.vldb.org/pvldb/vol16/p3018-fent.pdf)
+PVLDB 16(11), 2023](https://www.vldb.org/pvldb/vol16/p3018-fent.pdf)
 - [Neumann, Leis, Kemper: The Complete Story of Joins (in HyPer), BTW 2017](https://dl.gi.de/handle/20.500.12116/922)
-  （Single Join/Max1 语义补充）
+（Single Join/Max1 语义补充）
+
+
 
 ### 开源实现与调研入口
 
 - [Spark DecorrelateInnerQuery（固定提交）](https://github.com/apache/spark/blob/eb327b68ab8571d425ed08d820ae8ccbafabf32f/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/optimizer/DecorrelateInnerQuery.scala)、
-  [DomainJoin](https://github.com/apache/spark/blob/eb327b68ab8571d425ed08d820ae8ccbafabf32f/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/plans/logical/basicLogicalOperators.scala#L2475-L2496)、
-  [optimizer integration](https://github.com/apache/spark/blob/eb327b68ab8571d425ed08d820ae8ccbafabf32f/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/optimizer/subquery.scala)
+[DomainJoin](https://github.com/apache/spark/blob/eb327b68ab8571d425ed08d820ae8ccbafabf32f/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/plans/logical/basicLogicalOperators.scala#L2475-L2496)、
+[optimizer integration](https://github.com/apache/spark/blob/eb327b68ab8571d425ed08d820ae8ccbafabf32f/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/optimizer/subquery.scala)
 - [DuckDB holistic flatten（固定提交）](https://github.com/duckdb/duckdb/blob/6a3a26ffa866fcfccb74bbc1a9780b00a9ba082d/src/planner/subquery/flatten_dependent_join.cpp)、
-  [PR #17294](https://github.com/duckdb/duckdb/pull/17294)、
-  [binding graph PR #22162](https://github.com/duckdb/duckdb/pull/22162)、
-  [Delim-to-CTE](https://github.com/duckdb/duckdb/blob/6a3a26ffa866fcfccb74bbc1a9780b00a9ba082d/src/planner/subquery/delim_join_cte_rewriter.cpp)
+[PR #17294](https://github.com/duckdb/duckdb/pull/17294)、
+[binding graph PR #22162](https://github.com/duckdb/duckdb/pull/22162)、
+[Delim-to-CTE](https://github.com/duckdb/duckdb/blob/6a3a26ffa866fcfccb74bbc1a9780b00a9ba082d/src/planner/subquery/delim_join_cte_rewriter.cpp)
 - [Calcite TopDownGeneralDecorrelator（固定提交）](https://github.com/apache/calcite/blob/2ceaf277b8eb16c6dbdce0e6129a8ad7c186a390/core/src/main/java/org/apache/calcite/sql2rel/TopDownGeneralDecorrelator.java)、
-  [Programs opt-in integration](https://github.com/apache/calcite/blob/2ceaf277b8eb16c6dbdce0e6129a8ad7c186a390/core/src/main/java/org/apache/calcite/tools/Programs.java)、
-  [CALCITE-7031](https://issues.apache.org/jira/browse/CALCITE-7031)
+[Programs opt-in integration](https://github.com/apache/calcite/blob/2ceaf277b8eb16c6dbdce0e6129a8ad7c186a390/core/src/main/java/org/apache/calcite/tools/Programs.java)、
+[CALCITE-7031](https://issues.apache.org/jira/browse/CALCITE-7031)
 - [Materialize lowering（仅 source-available 对照）](https://github.com/MaterializeInc/materialize/blob/cb4e73fb79ed2d533baba040fbc2e5cd15e938b6/src/sql/src/plan/lowering.rs)、
-  [BSL 1.1 license](https://github.com/MaterializeInc/materialize/blob/cb4e73fb79ed2d533baba040fbc2e5cd15e938b6/LICENSE)
+[BSL 1.1 license](https://github.com/MaterializeInc/materialize/blob/cb4e73fb79ed2d533baba040fbc2e5cd15e938b6/LICENSE)
 - [awesome-db-optimizer/unnset 阅读目录](https://github.com/0AyanamiRei/awesome-db-optimizer/tree/main/unnset)
+

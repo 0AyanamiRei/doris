@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Doris Holistic Query Unnesting 架构调研</title>
+  <style>
+    :root {
+      --ink: #202124;
+      --muted: #5f6368;
+      --line: #d7dce2;
+      --paper: #f6f8fb;
+      --panel: #ffffff;
+      --accent: #176b87;
+      --accent-2: #8a5a12;
+      --accent-3: #4f6f52;
+      --code: #263238;
+      --code-bg: #eef3f5;
+      --warn-bg: #fff7df;
+      --good-bg: #eef8f2;
+      --bad-bg: #fff0ed;
+      --blue-bg: #eef6fb;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.68;
+    }
+
+    a { color: var(--accent); }
+    header { background: #fff; border-bottom: 1px solid var(--line); }
+
+    .wrap {
+      width: min(1180px, calc(100% - 36px));
+      margin: 0 auto;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 360px;
+      gap: 38px;
+      align-items: end;
+      padding: 48px 0 32px;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--accent);
+      font-size: 14px;
+      font-weight: 750;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(31px, 4.6vw, 52px);
+      line-height: 1.12;
+    }
+
+    .hero-summary {
+      max-width: 820px;
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 18px;
+    }
+
+    .source-box {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: #f6fbfd;
+      font-size: 14px;
+    }
+
+    .source-box strong { display: block; margin-bottom: 8px; }
+    .source-box ul { margin: 0; padding-left: 20px; }
+    .source-box li { margin: 6px 0; }
+
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 4;
+      padding: 11px 0;
+      border-top: 1px solid #eef1f4;
+      border-bottom: 1px solid var(--line);
+      background: rgb(255 255 255 / 96%);
+      backdrop-filter: blur(8px);
+    }
+
+    nav .wrap {
+      display: flex;
+      gap: 9px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }
+
+    nav a {
+      flex: 0 0 auto;
+      padding: 6px 11px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      font-size: 13px;
+      font-weight: 650;
+      text-decoration: none;
+    }
+
+    main { padding: 34px 0 64px; }
+
+    section {
+      margin: 0 0 34px;
+      padding: 28px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--panel);
+      scroll-margin-top: 78px;
+    }
+
+    h2 { margin: 0 0 18px; font-size: 28px; line-height: 1.25; }
+    h3 { margin: 27px 0 10px; font-size: 21px; line-height: 1.32; }
+    h4 { margin: 21px 0 8px; color: var(--accent); font-size: 17px; }
+    p { margin: 0 0 14px; }
+    ul, ol { margin: 0 0 16px 22px; padding: 0; }
+    li { margin: 6px 0; }
+
+    code {
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: var(--code-bg);
+      color: var(--code);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: .92em;
+    }
+
+    pre {
+      margin: 14px 0 18px;
+      overflow: auto;
+      padding: 16px;
+      border-radius: 8px;
+      background: #111827;
+      color: #e7edf5;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    pre code { padding: 0; border-radius: 0; background: transparent; color: inherit; font-size: inherit; }
+
+    .grid-2, .grid-3 {
+      display: grid;
+      gap: 17px;
+    }
+
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+    .card {
+      padding: 17px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfd;
+    }
+
+    .card h3, .card h4 { margin-top: 0; }
+
+    .note, .warning, .good, .bad {
+      margin: 16px 0;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    .note { border-color: #c8dce7; background: var(--blue-bg); }
+    .warning { border-color: #eed58d; background: var(--warn-bg); }
+    .good { border-color: #b8dfc4; background: var(--good-bg); }
+    .bad { border-color: #efb3a8; background: var(--bad-bg); }
+    .callout-title { margin: 0 0 6px; font-weight: 780; }
+
+    .table-wrap { width: 100%; overflow-x: auto; }
+    table { width: 100%; margin: 14px 0 20px; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 10px 11px; border: 1px solid var(--line); vertical-align: top; text-align: left; }
+    th { background: #eef3f5; }
+    .compact th, .compact td { padding: 8px 9px; }
+    .nowrap { white-space: nowrap; }
+
+    .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 13px 0 4px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 29px;
+      padding: 4px 10px;
+      border: 1px solid #c8d8df;
+      border-radius: 999px;
+      background: #f7fbfc;
+      color: #245160;
+      font-size: 13px;
+      font-weight: 680;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(140px, 1fr));
+      gap: 24px;
+      margin: 20px 0;
+      overflow-x: auto;
+    }
+
+    .flow-step {
+      position: relative;
+      min-width: 150px;
+      padding: 14px;
+      border: 1px solid #bfd2dc;
+      border-radius: 8px;
+      background: #f6fbfd;
+      text-align: center;
+    }
+
+    .flow-step:not(:last-child)::after {
+      position: absolute;
+      top: 50%;
+      right: -20px;
+      content: "→";
+      color: var(--accent);
+      font-size: 22px;
+      transform: translateY(-50%);
+    }
+
+    .flow-step strong { display: block; margin-bottom: 4px; }
+    .mini { color: var(--muted); font-size: 13px; }
+    .rank { font-weight: 800; color: var(--accent); }
+
+    .lane {
+      display: grid;
+      grid-template-columns: 155px minmax(0, 1fr);
+      gap: 15px;
+      margin: 10px 0;
+      padding: 13px 15px;
+      border-left: 4px solid var(--accent);
+      background: #f7fafc;
+    }
+
+    .lane-label { font-weight: 780; }
+
+    .status {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .status.prod { background: #dff3e6; color: #245b35; }
+    .status.exp { background: #fff0c7; color: #76520e; }
+    .status.none { background: #f7deda; color: #8a3023; }
+
+    footer {
+      padding: 28px 0 48px;
+      border-top: 1px solid var(--line);
+      background: #fff;
+      color: var(--muted);
+    }
+
+    @media (max-width: 920px) {
+      .hero, .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: repeat(5, 190px); }
+      section { padding: 22px 18px; }
+    }
+
+    @media (max-width: 620px) {
+      .wrap { width: min(100% - 22px, 1180px); }
+      .lane { grid-template-columns: 1fr; gap: 3px; }
+      table { font-size: 13px; }
+    }
+
+    @media print {
+      nav { display: none; }
+      body { background: #fff; }
+      section { break-inside: avoid; }
+      a { color: inherit; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap hero">
+      <div>
+        <p class="eyebrow">Optimizer Architecture Survey · 2026-08-25</p>
+        <h1>Doris Holistic Query Unnesting 架构调研</h1>
+        <p class="hero-summary">对照 Spark、DuckDB、Calcite 的相关子查询消除流程，以 optimizer rewrite 的 <strong>pattern / action / state / stop condition</strong> 为主线，设计一条从 Doris 当前局部 Apply 规则演进到 2025 holistic top-down unnesting 的可落地路线。</p>
+      </div>
+      <aside class="source-box">
+        <strong>调研边界</strong>
+        <ul>
+          <li>Doris：本地 <code>opt-research@7630bd1db9a1</code></li>
+          <li>Spark：<code>eb327b68</code>；DuckDB：<code>6a3a26ff</code></li>
+          <li>Calcite：<code>2ceaf277</code>（均为调研时主干快照）</li>
+          <li>算法基线：<a href="../paper/UnnestQuery-btw2015.pdf">2015 论文</a>、<a href="../paper/UnnestQuery-btw2025.pdf">2025 论文</a></li>
+          <li>本报告只提出架构，不修改 Doris 源码</li>
+        </ul>
+      </aside>
+    </div>
+    <nav>
+      <div class="wrap">
+        <a href="#conclusion">结论</a>
+        <a href="#model">2025 目标模型</a>
+        <a href="#comparison">横向比较</a>
+        <a href="#spark">Spark</a>
+        <a href="#duckdb">DuckDB</a>
+        <a href="#calcite">Calcite</a>
+        <a href="#doris">Doris 现状</a>
+        <a href="#target">目标架构</a>
+        <a href="#rules">核心规则</a>
+        <a href="#roadmap">路线图</a>
+        <a href="#verification">验证</a>
+        <a href="#sources">资料</a>
+      </div>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <section id="conclusion">
+      <h2>1. 执行结论</h2>
+      <div class="good">
+        <p class="callout-title">推荐组合：Spark 的 DomainJoin 外壳 + Calcite 的 2025 状态模型 + DuckDB 的终局语义与共享执行</p>
+        <p>Doris 不应继续把能力堆在若干局部 <code>Apply → Join</code> pattern 上，也不应先完整复刻 2015 bottom-up。正确方向是先建立一个独立的、全计划范围的 holistic unnesting phase；第一阶段仅覆盖现有可分析的基础计划形态，但数据结构和 traversal contract 从一开始就对齐 2025。</p>
+      </div>
+
+      <div class="grid-3">
+        <div class="card">
+          <h3><span class="rank">01</span> Spark：第一版模板</h3>
+          <p>显式 <code>DomainJoin</code> 占位符、递归 rewrite 返回三元状态、最终用普通 Aggregate + Join 物化 D。与 Doris 同为 JVM 和分布式 SQL，工程距离最近。</p>
+        </div>
+        <div class="card">
+          <h3><span class="rank">02</span> Calcite：终局状态模板</h3>
+          <p><code>TopDownGeneralDecorrelator</code> 直接对应 2025：全局相关定义、去重自由变量节点、每个子树的输出映射、嵌套 Correlate 合并。Java 表达最清楚，但仍是实验性组件。</p>
+        </div>
+        <div class="card">
+          <h3><span class="rank">03</span> DuckDB：正确性终局</h3>
+          <p>覆盖面、NULL/COUNT/Max1/MARK 语义以及 D 的共享执行最成熟；当前实现已走 holistic 路线。适合作为行为 oracle，不适合第一版逐行翻译。</p>
+        </div>
+      </div>
+
+      <h3>需要先做、但暂时不扩语义的基础工作</h3>
+      <div class="pill-row">
+        <span class="pill">OuterReference owner / depth</span>
+        <span class="pill">plan-wide access index</span>
+        <span class="pill">stateful top-down pass</span>
+        <span class="pill">Slot replacement graph</span>
+        <span class="pill">lazy DomainSpec</span>
+        <span class="pill">hidden binding columns</span>
+        <span class="pill">null-safe join-back</span>
+        <span class="pill">no-Apply invariant</span>
+      </div>
+    </section>
+
+    <section id="model">
+      <h2>2. 为什么终局必须以 2025 为架构基线</h2>
+      <p>2015 bottom-up 每次只消除一个 dependent join。深层嵌套时，不同层独立形成 D，后续可能在不真实存在的绑定笛卡尔积上执行聚合；结果仍可能正确，但中间规模会爆炸。2025 的变化不是增加几条规则，而是改变处理顺序和状态所有权。</p>
+
+      <div class="flow" aria-label="Holistic unnesting phases">
+        <div class="flow-step"><strong>完整代数化</strong><span class="mini">保留全部 dependent joins</span></div>
+        <div class="flow-step"><strong>预标注</strong><span class="mini">producer / access / LCA</span></div>
+        <div class="flow-step"><strong>Top-down 消除</strong><span class="mini">祖先与后代一起处理</span></div>
+        <div class="flow-step"><strong>Domain lowering</strong><span class="mini">D 或 substitution</span></div>
+        <div class="flow-step"><strong>常规优化</strong><span class="mini">join reorder / CBO / physical</span></div>
+      </div>
+
+      <h3>2025 pass 必须携带的状态</h3>
+      <div class="table-wrap">
+        <table class="compact">
+          <thead><tr><th>状态</th><th>含义</th><th>Doris 中建议的表达</th></tr></thead>
+          <tbody>
+            <tr><td><code>outerRefs</code></td><td>当前 dependent join 的 RHS 真正读取的 LHS 列</td><td><code>OuterRefKey(applyId, exprId, depth)</code></td></tr>
+            <tr><td><code>D</code></td><td>从真实 LHS 绑定投影并去重的 domain；先描述，必要时才物化</td><td><code>DomainSpec(source, keys, aliases)</code></td></tr>
+            <tr><td><code>parent</code></td><td>祖先 unnesting state；处理嵌套 Apply 时合并真实可达绑定</td><td><code>UnnestingContext.parent</code></td></tr>
+            <tr><td><code>cclasses</code></td><td>路径上等值谓词形成的传递等价类，用于选择 substitution</td><td>专用 <code>ImmutableEqualSet.Builder&lt;Expression&gt;</code></td></tr>
+            <tr><td><code>repr</code></td><td>每个 outer ref 当前由哪个普通 Slot / 表达式代表</td><td><code>BindingReplacementGraph</code></td></tr>
+            <tr><td><code>accessing</code></td><td>哪些 operator 仍真实读取当前 outer refs；为空即停止</td><td><code>DependentJoinInfo.accessSites</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="warning">
+        <p class="callout-title">关键 invariant</p>
+        <p>不同 unnesting state 的 D 不跨越嵌套 dependent join 盲目下推。遇到后代 Apply 时，要么在祖先 pass 内合并处理，要么明确停止并让后代在后续 top-down 顺序中处理。</p>
+      </div>
+    </section>
+
+    <section id="comparison">
+      <h2>3. 三套实现的架构比较</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>维度</th><th>Spark</th><th>DuckDB</th><th>Calcite TopDown</th><th>Doris 当前</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>状态</td><td>递归返回 plan、join conditions、replacement map</td><td><code>UnnestingState</code> + binding replacement graph + parent flattener</td><td><code>CorDef</code>、<code>UnnestedQuery</code>、<code>DedupFreeVarsNode</code></td><td>局部 Rule；<code>LogicalApply</code> 只存 slots/filter</td></tr>
+            <tr><td>D 的逻辑表示</td><td><code>DomainJoin</code> placeholder</td><td><code>DelimJoin / DelimGet</code></td><td><code>DedupFreeVarsNode</code></td><td>无</td></tr>
+            <tr><td>D 的最终实现</td><td>outer 上 Aggregate distinct + 普通 Join</td><td>专用 Delim 执行或 materialized CTE lowering</td><td>Aggregate/value generator + 普通 Join</td><td>无 fallback；非等值标量报错</td></tr>
+            <tr><td>遍历方向</td><td>带状态递归，整体上 top-down</td><td>完整计划后 holistic outer-to-inner</td><td>显式 top-down visitor</td><td>bottom-up 局部 pattern batch</td></tr>
+            <tr><td>访问定位</td><td>每子树检测 OuterReference</td><td>subtree access cache / correlated binding graph</td><td>全树相关检测 map</td><td>只知道 correlation slots，访问位置受 Analyzer 限制</td></tr>
+            <tr><td>等值策略</td><td>安全一对一等值优先 substitution，残余走 D</td><td>replacement graph + D，成本/可用性选择</td><td>equivalence / repr 与 D 并存</td><td>只接受可拆分二元相关式；标量最终必须 EQ</td></tr>
+            <tr><td>嵌套相关</td><td>可传播 domain，仍有 operator 边界</td><td>当前主干为 holistic 路线</td><td>parent/sub-decorrelator 合并</td><td>逐 Apply 局部处理；Analyzer 还有单访问限制</td></tr>
+            <tr><td>成熟度</td><td><span class="status prod">生产</span></td><td><span class="status prod">生产</span></td><td><span class="status exp">实验、opt-in 集成</span></td><td><span class="status none">无显式 D</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="spark">
+      <h2>4. Spark：DomainJoin 驱动的递归 rewrite</h2>
+      <p>Spark 的核心不是 Catalyst 中一串彼此独立的 pattern rule，而是 <code>DecorrelateInnerQuery</code> 这个带状态递归过程。它返回新的 inner plan、和 outer 的 join conditions、以及 outer reference 到 inner/domain attribute 的映射；后续再按 scalar、lateral、EXISTS/IN 做 lowering。</p>
+
+      <h3>核心 pattern / action</h3>
+      <div class="table-wrap">
+        <table class="compact">
+          <thead><tr><th>Pattern</th><th>Action</th><th>停止 / 约束</th></tr></thead>
+          <tbody>
+            <tr><td>子树无 OuterRef，待绑定集为空</td><td>原样返回</td><td>正常终止</td></tr>
+            <tr><td>子树无 OuterRef，待绑定集非空</td><td>插入 <code>DomainJoin(DAttrs, child)</code>；建立 <code>DAttr &lt;=&gt; OuterRef</code> 和 replacement map</td><td>之后统一 lowering</td></tr>
+            <tr><td><code>Filter(correlated AND local)</code></td><td>无聚合屏障时上提相关谓词；收集安全等值 substitution；残余 OuterRef 改写成 DAttr</td><td>聚合下仅一对一等值可上提</td></tr>
+            <tr><td><code>Project</code></td><td>改写表达式；把上层 join conditions 需要的属性及 domain hidden slots 透传</td><td>必须保持 ExprId 映射</td></tr>
+            <tr><td><code>Aggregate</code></td><td>以 aggregated 状态递归；把 binding attrs 加入 group-by 与 output；静态聚合处理空输入</td><td>COUNT default / count bug 单独修正</td></tr>
+            <tr><td><code>Window</code></td><td>把 binding attrs 加入 partition 与输出</td><td>Window 自身 OuterRef 仍受限制</td></tr>
+            <tr><td><code>Limit / Offset / Sort</code></td><td>改写为按 domain attrs 分区的 <code>ROW_NUMBER</code> + 范围过滤</td><td>保证每个 binding 单独限行</td></tr>
+            <tr><td><code>Join</code></td><td>按 join type / preserved side 选择传播侧；必要时两侧携带 D 并用 null-safe key 对齐</td><td>ON 条件与 unmatched-row 语义决定分支</td></tr>
+            <tr><td>SetOp / Distinct</td><td>完整 D 进入所有 branch；统一 domain slot 位置；按 binding 隔离去重</td><td>child schema / ExprId 必须对齐</td></tr>
+            <tr><td>未覆盖多子节点</td><td>fail fast</td><td>不保留可执行 Apply fallback</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Domain lowering</h3>
+      <pre><code>DomainJoin [d.a, d.b]
+└── Inner
+
+        ↓ rewriteDomainJoins(outer, inner, conditions)
+
+Join(domain, Inner, rewritten predicate)
+├── Aggregate(group by outer.a, outer.b,
+│             output outer.a AS d.a, outer.b AS d.b)
+│   └── Outer
+└── Inner</code></pre>
+
+      <div class="note">
+        <p class="callout-title">对 Doris 的主要价值</p>
+        <p>第一版可以直接采用 Spark 的“placeholder 后统一 lowering”边界：先解决正确的逻辑计划，不要求增加物理 DelimJoin；同时 rewrite API 从第一天就返回 plan 之外的映射状态，避免继续把状态塞进零散 Rule。</p>
+      </div>
+      <div class="warning">
+        <p class="callout-title">不要把 Spark 原样当作 2025 终局</p>
+        <p>Spark 当前仍是 2015 DomainJoin 框架的广覆盖实现：过程较集中，Analyzer 保留 correlation-path 白名单，outer plan 在 D lowering 中会逻辑复制，COUNT 也存在两条修正路径。它最适合提供 transfer function 和回归矩阵，而不是直接决定 Doris 的最终状态组织。</p>
+      </div>
+    </section>
+
+    <section id="duckdb">
+      <h2>5. DuckDB：holistic rewrite + 可共享的 Delim domain</h2>
+      <p>DuckDB 的旧路线是在规划每个相关子查询时立即局部 flatten。2025 重构后，先把整条语句构造成含 <code>LogicalDependentJoin</code> 的完整逻辑计划，再从外向内统一消除；当前主干继续强化了 binding replacement graph、subtree access cache 和复杂 join/CTE 规则。</p>
+
+      <h3>核心 pattern / action</h3>
+      <div class="table-wrap">
+        <table class="compact">
+          <thead><tr><th>Pattern</th><th>Action</th><th>关键状态</th></tr></thead>
+          <tbody>
+            <tr><td><code>DependentJoin(L,R,C)</code></td><td>从 L 定义去重 C 域；D 经 DelimGet 进入 R；outer refs→D bindings；以 <code>L.C IS NOT DISTINCT FROM D.C</code> 接回</td><td>bindings、replacement graph、parent、join type、NULL propagation</td></tr>
+            <tr><td>R 子树不再访问 C</td><td>停止下推，形成 <code>R × DelimGet(D)</code></td><td>正常停止点，不是失败</td></tr>
+            <tr><td>Filter / Project</td><td>递归、改写 outer refs、保护 D keys 输出</td><td>binding layout 必须稳定</td></tr>
+            <tr><td>Aggregate / Distinct / Window</td><td>D keys 分别加入 group、distinct target、window partition；静态 aggregate 用外连接恢复缺组</td><td>COUNT NULL→0</td></tr>
+            <tr><td>Cross / Join</td><td>一侧相关只推一侧；两侧相关分别携带 D 并补 null-safe equality；outer join 选 preserved-side representative</td><td>每个子树的 domain access cache</td></tr>
+            <tr><td>Limit / Order</td><td>常量 limit/offset 改写为 per-D ROW_NUMBER</td><td>表达式或 percent limit 仍可能失败</td></tr>
+            <tr><td>SetOp / VALUES</td><td>每个 branch / row 追加 D keys 并对齐 layout</td><td>schema extension + remap</td></tr>
+            <tr><td>CTE / recursive CTE</td><td>D 扩展 producer、consumer 与递归 schema；避免共享子树重复注入</td><td>DAG / producer-consumer identity</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>物理复用给 Doris 的启示</h3>
+      <div class="grid-2">
+        <div class="card">
+          <h4>专用 Delim 执行</h4>
+          <p>LHS batch 一次输入，同时送往原始 L 路径和 HashDistinct 路径；多个 DelimScan 共享 D。这避免了复制一棵昂贵 outer plan。</p>
+        </div>
+        <div class="card">
+          <h4>Materialized CTE lowering</h4>
+          <p>调研快照中 <code>delim_join_as_cte</code> 已默认开启：DelimJoin/DelimGet 被降成两个共享 CTE 层，先物化完整 L，再从其 consumer 计算 D。Doris 已有 CTE producer/consumer，可把它作为专用物理算子之前的工程过渡。</p>
+        </div>
+      </div>
+
+      <div class="warning">
+        <p class="callout-title">不要从旧 offset-based 代码移植</p>
+        <p>Doris 应直接使用 ExprId/Slot replacement graph 与显式 output contract，避免复制 DuckDB 旧实现中依靠位置、offset 和 table index 算术传递状态的方式。</p>
+      </div>
+    </section>
+
+    <section id="calcite">
+      <h2>6. Calcite：传统 Frame decorrelator 与 2025 top-down 实验实现</h2>
+      <p>传统 <code>RelDecorrelator</code> 以每个 RelNode 的 Frame 和输出位置映射逐层传播相关列，适合观察成熟 Calcite 如何维护字段位置、COUNT 和 scalar 规则，但它不是 Doris 的终局模板。新的 <code>TopDownGeneralDecorrelator</code> 明确基于 2025 论文，并把 D 与父子 unnesting state 提升为一等对象。</p>
+
+      <h3>TopDownGeneralDecorrelator 的状态</h3>
+      <div class="table-wrap">
+        <table class="compact">
+          <thead><tr><th>对象</th><th>职责</th><th>对 Doris 的映射</th></tr></thead>
+          <tbody>
+            <tr><td><code>CorDef</code></td><td>相关变量的 owner correlation id + field index</td><td>不能继续只用裸 <code>Slot</code>；需要 owner/depth</td></tr>
+            <tr><td><code>hasCorrelatedExpressions</code></td><td>预先标注每个 RelNode 子树是否仍有当前相关访问</td><td>PlanTopologyIndex / access summary</td></tr>
+            <tr><td><code>UnnestedQuery</code></td><td>保存原/新节点、相关列输出位置、旧输出到新输出映射</td><td><code>RewriteResult(plan, bindingOutputs, outputMap)</code></td></tr>
+            <tr><td><code>DedupFreeVarsNode</code></td><td>当前自由变量的去重域 D</td><td>lazy <code>DomainSpec</code> / <code>LogicalDomainJoin</code></td></tr>
+            <tr><td>sub-decorrelator</td><td>遇到嵌套 Correlate 时继承并合并父状态</td><td><code>UnnestingContext.parent</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>主要 pattern / action</h3>
+      <div class="lane"><div class="lane-label">Correlate</div><div>先登记 left required columns 为 CorDef，构造/更新 D；递归 unnest RHS；最终增加 <code>L IS NOT DISTINCT FROM D</code> 并转 Join。</div></div>
+      <div class="lane"><div class="lane-label">Filter / Project</div><div>记录等价关系、改写 outer references、追加相关列输出并维护 old-to-new output map。</div></div>
+      <div class="lane"><div class="lane-label">Aggregate</div><div>把相关代表列加入 group/output；对 static aggregate 先做 value-generator / left join，确保每个 binding 都有结果。</div></div>
+      <div class="lane"><div class="lane-label">Join / SetOp</div><div>按访问分布拆分状态；多 branch 输出统一 CorDef layout；join type 决定 representative 与 nullability。</div></div>
+      <div class="lane"><div class="lane-label">Sort / Limit</div><div>按相关列 partition 的 ROW_NUMBER 重写 per-binding order/offset/fetch。</div></div>
+      <div class="lane"><div class="lane-label">Stop</div><div>访问列表/相关检测为空时，在“安全 substitution”与“加入 D”之间选择；不把两个独立 D 穿过嵌套 Correlate。</div></div>
+
+      <div class="warning">
+        <p class="callout-title">成熟度边界</p>
+        <p><code>TopDownGeneralDecorrelator</code> 仍标记为 experimental，默认关闭；当前主干已通过连接属性、<code>Programs.subQuery</code> 和 <code>DecorrelateProgram</code> 进入 opt-in 全链路，Javadoc 中“not yet integrated”已经部分过时。它适合做 Doris 设计参照和测试 oracle，但仍不能视为默认生产路径。</p>
+      </div>
+
+      <h3>DAG 与 annotation cache</h3>
+      <p>同一个共享 RelNode 在不同相关上下文中可能得到不同的自由变量集合。Calcite 预处理使用 <code>noDag=true</code> 规避污染；Doris 更适合让缓存键包含 <code>(plan identity, correlation-context fingerprint)</code>，为后续 CTE DAG 保留正确扩展方向。</p>
+    </section>
+
+    <section id="doris">
+      <h2>7. Doris Nereids 当前基线与基础缺口</h2>
+      <h3>当前流程</h3>
+      <pre><code>SubqueryToApply
+  → LogicalApply(correlationSlot, RHS with outer slots)
+  → CorrelateApplyToUnCorrelateApply (一组 bottom-up 局部 rules)
+  → UnCorrelatedApplyAggregateFilter
+       提取 RHS 表达式并加入 GROUP BY
+  → Scalar / In / Exists ApplyToJoin
+  → 普通 LogicalJoin</code></pre>
+
+      <p>这条路径对等值相关标量聚合有效，但不具备显式 D fallback。复杂相关 conjunct 先被 <code>Utils.getUnCorrelatedExprs</code> 的“二元且一侧纯 outer、一侧纯 inner”约束挡住；残余非等值即使到达 <code>ScalarApplyToJoin</code>，也会因为不是 <code>EqualTo</code> 报错。</p>
+
+      <h3>已有能力与缺口</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>能力</th><th>已有基础</th><th>缺口 / 必须补的 contract</th></tr></thead>
+          <tbody>
+            <tr><td>相关引用</td><td><code>correlationSlot</code> 能标出 Apply 需要的外层列</td><td>缺 owner/depth；Analyzer 只看近层 scope，且禁止多个访问位置</td></tr>
+            <tr><td>访问定位</td><td>Plan/Expression 都可遍历 input slots</td><td>无 parent/LCA/subtree interval/producer index；不知道哪个 operator 真正访问哪个 Apply</td></tr>
+            <tr><td>遍历框架</td><td>TreeNode 有 top-down/bottom-up，Rule batch 成熟</td><td>局部 pattern rule 无法携带 parent unnesting 与 branch-local repr；需要专用 whole-plan pass</td></tr>
+            <tr><td>等价与替换</td><td><code>ImmutableEqualSet</code>、<code>ExpressionUtils.replace</code>、DataTrait equality</td><td>缺 rewrite 期间的 scoped equivalence state 与跨 operator output replacement graph</td></tr>
+            <tr><td>NULL-safe equality</td><td><code>NullSafeEqual</code> 已有表达式与执行支持</td><td>需规定 join-back 与双 branch D 对齐必须使用它，并防止后续规则错误降级</td></tr>
+            <tr><td>Domain</td><td>Aggregate/Distinct、CTE producer/consumer、DeepCopier 已有</td><td>无 DomainSpec/DomainJoin、fresh alias contract、sharing/lowering phase</td></tr>
+            <tr><td>隐藏列透传</td><td>Project/Aggregate 可扩 output</td><td>domain slots 可能被 column pruning、project merge、join reorder 提前丢弃</td></tr>
+            <tr><td>复杂语义</td><td>Semi/Anti/Mark、outer joins、Window/TopN、recursive CTE 节点均存在</td><td>未形成 per-binding operator rewrite contract；Analyzer 仍提前拒绝多数访问位置</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="bad">
+        <p class="callout-title">最大的架构风险</p>
+        <p>直接修改 <code>ScalarApplyToJoin</code>，遇到非 EQ 就现场拼一个 D，只能修单层 <code>Aggregate(Filter(scan))</code>。它不会解决访问标注、嵌套 Apply、两侧 Join、输出 remap 和 D 共享，之后很可能推倒重来。</p>
+      </div>
+    </section>
+
+    <section id="target">
+      <h2>8. 建议的 Doris 终局架构</h2>
+      <p>保持 <code>LogicalApply</code> 作为 SQL lowering 后的 dependent-join IR，但把消除过程从 rule list 升级为一个独立 topic。第一版即采用以下 phase 边界，未支持的复杂 operator 仍可 fail fast；以后只增加 operator handler，不改变总流程。</p>
+
+      <div class="flow" aria-label="Proposed Doris phases">
+        <div class="flow-step"><strong>Normalize Apply IR</strong><span class="mini">不急于 pull filter</span></div>
+        <div class="flow-step"><strong>Build Plan Index</strong><span class="mini">access / producer / topology</span></div>
+        <div class="flow-step"><strong>Holistic Eliminator</strong><span class="mini">stateful top-down</span></div>
+        <div class="flow-step"><strong>Lower Domains</strong><span class="mini">Aggregate + Join / shared CTE</span></div>
+        <div class="flow-step"><strong>Validate + CBO</strong><span class="mini">no Apply, ordinary plans</span></div>
+      </div>
+
+      <h3>8.1 预处理：PlanTopologyIndex</h3>
+      <p>先用一次只读 DFS 建立临时索引，不要求立刻改造 Nereids 全局 Plan ID：</p>
+      <pre><code>PlanTopologyIndex
+  parentByIdentity      Plan → parent edge(s)
+  depth / tin / tout    LCA 与 subtree containment
+  producerByExprId      ExprId → producing Plan
+  accessesByPlan        Plan → outer refs used locally
+  dependentJoinInfo     Apply → {outerRefs, accessSites, parentApply}
+  subtreeAccessSummary  (Plan, Apply) → correlated / volatile / none</code></pre>
+      <p>第一版计划仍是树，可使用 <code>IdentityHashMap</code> 与 Euler interval。以后处理 CTE DAG 时把 parent 改为多边并切成共享子树，不应在第一版预先实现完整 indexed algebra。</p>
+
+      <h3>8.2 核心 rewrite API</h3>
+      <pre><code>RewriteResult unnest(
+    Plan node,
+    UnnestingContext ctx,
+    Set&lt;AccessSite&gt; remainingAccesses)
+
+UnnestingContext
+  info: {apply, outerRefs, DomainSpec, parent}
+  cclasses: scoped equivalence classes
+  repr: BindingReplacementGraph
+  outputMap: old ExprId → new Slot
+  semantics: join type / null / multiplicity flags</code></pre>
+
+      <p><code>RewriteResult</code> 不能只返回 Plan。Project、Aggregate、SetOp 与 Join 都会改变 output layout，父节点必须收到 binding outputs 和 old-to-new mapping；这一点 Spark、DuckDB、Calcite 三者虽然命名不同，但结论一致。</p>
+
+      <p>整个 pass 应当事务式构造候选树：遇到尚未支持的节点时丢弃候选并回到现有 Doris 路径；只有成功完成并通过 invariant 检查后才替换原计划。若旧路径同样无法处理，再统一报告 unsupported，不能留下半改写计划。</p>
+
+      <h3>8.3 DomainSpec 先懒描述、后统一 lowering</h3>
+      <pre><code>DomainSpec
+  source       := Apply.left 的真实逻辑结果
+  keys         := outerRefs
+  aliases      := fresh ExprIds used inside RHS
+  materialize  := AUTO | DUPLICATE_TREE | SHARED_CTE | PHYSICAL_DELIM
+
+D := DISTINCT Project(keys, source)</code></pre>
+      <p>holistic pass 内只插入 <code>LogicalDomainJoin</code> 或等价 placeholder；结束后统一降低为普通 Aggregate + Join。这样逻辑正确性与执行共享解耦：第一版可复制 outer tree，第二版使用 CTE producer/consumer，最终再考虑专用 physical delim fan-out。</p>
+
+      <h3>8.4 决策接口</h3>
+      <pre><code>if safeEquivalentRepresentativeExists(outerRef, cclasses, subtreeOutput):
+    repr[outerRef] := chosen inner slot        // substitution
+else:
+    repr[outerRef] := DomainSpec.alias         // explicit D</code></pre>
+      <p>第一版策略应确定性且保守：只在明确的一对一等值与可见 Slot 上 substitution，其余一律 D。之后再让 CBO 根据 D 的选择性、distinct cardinality、已有 key/FD 和分布属性选择。</p>
+    </section>
+
+    <section id="rules">
+      <h2>9. Doris 核心 operator 的 pattern / action contract</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Pattern</th><th>第一版 action</th><th>终局预留</th></tr></thead>
+          <tbody>
+            <tr><td><code>LogicalApply(L,R)</code></td><td>先尝试 simple elimination；否则创建 context，从 RHS top-down unnest；最后为每个 outerRef 补 <code>L.c NullSafeEqual repr(c)</code></td><td>嵌套 Apply 合并 parent state；Mark/Semi/Anti/outer join 统一语义</td></tr>
+            <tr><td><code>LogicalFilter(p, child)</code></td><td>从顶层 AND 等值项更新 cclasses；递归；用 repr 深度改写全部表达式，OR 保持原形</td><td>谓词移动合法性、volatile barrier</td></tr>
+            <tr><td><code>LogicalProject(exprs, child)</code></td><td>递归；改写 exprs；追加仍被上层使用的 repr/domain hidden slots</td><td>Alias lineage、复杂 map 上移</td></tr>
+            <tr><td><code>LogicalAggregate(G,A,child)</code></td><td>递归；改写；把 repr(outerRefs) 加入 group 与 output</td><td>global/static aggregate 用 D left join；COUNT default、grouping sets</td></tr>
+            <tr><td>Leaf / 无访问子树</td><td>停止；选择 substitution，否则插入 D join；返回 binding outputs</td><td>cost-based domain placement</td></tr>
+            <tr><td><code>LogicalJoin</code></td><td>第一版仅允许访问全部在一个 inner-join child；否则明确 unsupported</td><td>分叉两个 context；按 join type 选 representative；Full 用 COALESCE</td></tr>
+            <tr><td><code>Window</code></td><td>第一版 fail fast，但 API 保留 handler</td><td>repr keys 加入 partition</td></tr>
+            <tr><td>SetOp / Limit / CTE / Recursive</td><td>第一版 fail fast，错误在 holistic pass 内统一报告</td><td>按 D 隔离 branch、ROW_NUMBER、DAG tree-cut、递归 schema 扩展</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note">
+        <p class="callout-title">为何第一版仍能覆盖论文 Q2</p>
+        <p>Q2 的 RHS 是 global Aggregate → Filter → Scan。Filter 中的 OR 不需要拆成等值 conjunct；整个表达式只需把 <code>s.id / s.major / s.year</code> 改写成 D aliases。Aggregate 再按三个 aliases 分组，最后 null-safe join-back 即可。</p>
+      </div>
+    </section>
+
+    <section id="roadmap">
+      <h2>10. 分阶段落地路线</h2>
+      <div class="lane"><div class="lane-label">Phase 0<br /><span class="mini">基础设施，不改行为</span></div><div><strong>PlanTopologyIndex、OuterRefKey、DependentJoinInfo、RewriteResult、BindingReplacementGraph、DomainSpec。</strong> 在现有成功/失败用例上仅输出 debug annotation；建立“所有 access 都归属唯一 Apply”的 invariant。</div></div>
+      <div class="lane"><div class="lane-label">Phase 1<br /><span class="mini">显式 D vertical slice</span></div><div>支持 <code>Scalar Apply → [Project] → Global Aggregate → [Project] → Filter → 单输入子树</code>。等值沿用现有快路径，非等值/OR 走 D；先支持 MIN/MAX/SUM/AVG。目标是论文 Q2 与 Doris 当前非 EQ 回归测试由 error 变为正确结果。</div></div>
+      <div class="lane"><div class="lane-label">Phase 2<br /><span class="mini">holistic nested Apply</span></div><div>切换 top-to-bottom 调度；实现 parent context 与访问标注；祖先 pass 遇到后代 Apply 时合并处理，消除独立 D 笛卡尔积。加入 2025 crash.sql 形态的规模测试。</div></div>
+      <div class="lane"><div class="lane-label">Phase 3<br /><span class="mini">核心语义补齐</span></div><div>COUNT/empty-input、Max1/LeftSingle、Window、inner/left/right/full Join、SetOp、Mark/Semi/Anti。此阶段完成“普通 SQL 计划树”上的广覆盖。</div></div>
+      <div class="lane"><div class="lane-label">Phase 4<br /><span class="mini">复杂结构</span></div><div>ORDER BY LIMIT per binding、共享 CTE DAG、recursive CTE、full-join condition subquery；将 Analyzer 的提前拒绝逐项后移到 holistic pass。</div></div>
+      <div class="lane"><div class="lane-label">Phase 5<br /><span class="mini">业界最佳执行</span></div><div>D 的 CBO 位置选择、FD/unique-key substitution、CTE/spool 共享、分布式 distinct 与 exchange property、可选 physical delim fan-out、holistic CE 与 join-order integration。</div></div>
+
+      <h3>建议的代码边界</h3>
+      <pre><code>rules/rewrite/subquery/
+  HolisticApplyEliminator.java        // orchestration + top-down traversal
+  CorrelationPlanIndex.java           // preprocessing annotations
+  UnnestingContext.java               // outerRefs / D / parent / cclasses / repr
+  UnnestingRewriteResult.java         // plan + binding outputs + output remap
+  DomainSpec.java                     // lazy domain description
+  DomainLowering.java                 // Aggregate+Join / CTE lowering
+  OperatorUnnestingRules.java         // pattern/action handlers
+  UnnestingValidator.java             // no Apply / no outer ref / invariants</code></pre>
+      <p>这是概念边界，不要求第一批 PR 一次创建全部类。重要的是把 orchestration、state、operator handlers、domain lowering 和 validation 分开，避免重新形成一个巨型 Rule。</p>
+    </section>
+
+    <section id="verification">
+      <h2>11. 验证矩阵与不变量</h2>
+      <h3>每次 rewrite 后必须成立</h3>
+      <ul>
+        <li>任何 outer reference 都能唯一定位到提供它的 dependent join；不能靠同名 Slot 猜测。</li>
+        <li>每个 <code>repr(c)</code> 必须真实存在于当前子树输出；Project/SetOp 后必须更新 output map。</li>
+        <li>D 的 key 采用集合语义去重，NULL 绑定参与分组，并用 <code>NullSafeEqual</code> join-back。</li>
+        <li>Aggregate / Window / Distinct / Limit 的语义必须按 binding 隔离。</li>
+        <li>最终进入常规优化前：无 <code>LogicalApply</code>、无 outer refs、无 domain placeholder。</li>
+        <li>规则无法证明正确时 fail fast，不保留不可执行的 dependent plan。</li>
+      </ul>
+
+      <h3>第一阶段最小测试集</h3>
+      <div class="table-wrap">
+        <table class="compact">
+          <thead><tr><th>类别</th><th>用例</th><th>主要防线</th></tr></thead>
+          <tbody>
+            <tr><td>等值基线</td><td>现有 scalar aggregate EQ 全量保持 plan/result</td><td>新架构不回退已有快路径</td></tr>
+            <tr><td>非等值</td><td><code>outer.k &gt; inner.k</code> 下 MIN/MAX/SUM/AVG</td><td>D fallback 与 per-binding group</td></tr>
+            <tr><td>复合谓词</td><td>论文 Q2 的 OR + AND + 多 outer refs</td><td>不依赖把 OR 拆成等值 conjunct</td></tr>
+            <tr><td>Multiplicity</td><td>L 中同一 binding 多行、不同 binding 相同 RHS 结果</td><td>D 去重且 join-back 恢复 L multiplicity</td></tr>
+            <tr><td>NULL</td><td>outer key NULL、inner key NULL、普通 = 与 null-safe join-back 混合</td><td>论文 <code>=A</code> 的 IS 语义</td></tr>
+            <tr><td>Empty</td><td>无 inner match 的 AVG/MIN/MAX/SUM</td><td>scalar NULL 与 left join</td></tr>
+            <tr><td>Plan shape</td><td>EXPLAIN 中无 Apply/OuterRef/Domain placeholder</td><td>完整 lowering invariant</td></tr>
+            <tr><td>嵌套压力</td><td>Phase 2 加三层相关聚合与无效域组合</td><td>holistic 不生成 D1×D2×D3</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="sources">
+      <h2>12. 一手资料与源码入口</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h3>论文</h3>
+          <ul>
+            <li><a href="../paper/UnnestQuery-btw2015.pdf">Unnesting Arbitrary Queries（本地）</a></li>
+            <li><a href="../paper/UnnestQuery-btw2025.pdf">Improving Unnesting of Complex Queries（本地）</a></li>
+            <li><a href="https://arxiv.org/abs/2412.04294">A Formalization of Top-Down Unnesting</a></li>
+            <li><a href="holistic-query-unnesting-indexed-algebra.html">仓库内 Indexed Algebra 教程</a></li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Spark</h3>
+          <ul>
+            <li><a href="https://github.com/apache/spark/blob/eb327b68ab8571d425ed08d820ae8ccbafabf32f/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/optimizer/DecorrelateInnerQuery.scala#L35-L1138">DecorrelateInnerQuery.scala（冻结快照）</a></li>
+            <li><a href="https://github.com/apache/spark/blob/eb327b68ab8571d425ed08d820ae8ccbafabf32f/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/plans/logical/basicLogicalOperators.scala#L2475-L2496">DomainJoin logical node</a></li>
+            <li><a href="https://github.com/apache/spark/blob/eb327b68ab8571d425ed08d820ae8ccbafabf32f/sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/optimizer/subquery.scala#L467-L1100">Subquery lowering / rewriteDomainJoins integration</a></li>
+            <li><a href="https://issues.apache.org/jira/browse/SPARK-34974">SPARK-34974</a></li>
+            <li><a href="https://github.com/apache/spark/blob/eb327b68ab8571d425ed08d820ae8ccbafabf32f/sql/catalyst/src/test/scala/org/apache/spark/sql/catalyst/optimizer/DecorrelateInnerQuerySuite.scala">DecorrelateInnerQuerySuite</a></li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>DuckDB</h3>
+          <ul>
+            <li><a href="https://github.com/duckdb/duckdb/pull/17294">PR #17294: holistic unnesting</a></li>
+            <li><a href="https://github.com/duckdb/duckdb/commit/4e7d0036ab970dadfff3588eeeb0d6c0f5e93fae">2025 holistic merge 快照</a></li>
+            <li><a href="https://github.com/duckdb/duckdb/blob/6a3a26ffa866fcfccb74bbc1a9780b00a9ba082d/src/planner/subquery/flatten_dependent_join.cpp">current flatten_dependent_join.cpp</a></li>
+            <li><a href="https://github.com/duckdb/duckdb/pull/22162">current state / binding 重构 PR</a></li>
+            <li><a href="https://github.com/duckdb/duckdb/blob/6a3a26ffa866fcfccb74bbc1a9780b00a9ba082d/src/execution/physical_plan/plan_delim_join.cpp">plan_delim_join.cpp</a></li>
+            <li><a href="https://github.com/duckdb/duckdb/blob/6a3a26ffa866fcfccb74bbc1a9780b00a9ba082d/src/planner/subquery/delim_join_cte_rewriter.cpp">delim_join_cte_rewriter.cpp</a></li>
+            <li><a href="https://github.com/duckdb/duckdb/pull/23098">DelimJoin → materialized CTE</a></li>
+            <li><a href="https://duckdb.org/2023/05/26/correlated-subqueries-in-sql">官方相关子查询说明</a></li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Calcite</h3>
+          <ul>
+            <li><a href="https://github.com/apache/calcite/blob/2ceaf277b8eb16c6dbdce0e6129a8ad7c186a390/core/src/main/java/org/apache/calcite/sql2rel/TopDownGeneralDecorrelator.java">TopDownGeneralDecorrelator.java（冻结快照）</a></li>
+            <li><a href="https://github.com/apache/calcite/blob/2ceaf277b8eb16c6dbdce0e6129a8ad7c186a390/core/src/main/java/org/apache/calcite/sql2rel/RelDecorrelator.java">RelDecorrelator.java</a></li>
+            <li><a href="https://calcite.apache.org/javadocAggregate/org/apache/calcite/sql2rel/TopDownGeneralDecorrelator.html">TopDownGeneralDecorrelator Javadoc</a></li>
+            <li><a href="https://issues.apache.org/jira/browse/CALCITE-7031">CALCITE-7031</a></li>
+            <li><a href="https://github.com/apache/calcite/blob/2ceaf277b8eb16c6dbdce0e6129a8ad7c186a390/core/src/main/java/org/apache/calcite/tools/Programs.java">opt-in 集成入口 Programs.java</a></li>
+            <li><a href="https://github.com/apache/calcite/blob/2ceaf277b8eb16c6dbdce0e6129a8ad7c186a390/core/src/test/java/org/apache/calcite/test/RelOptRulesTest.java">RelOptRulesTest.java</a></li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Doris 当前入口</h3>
+          <ul>
+            <li><a href="https://github.com/apache/doris/blob/master/fe/fe-core/src/main/java/org/apache/doris/nereids/trees/plans/logical/LogicalApply.java">LogicalApply.java</a></li>
+            <li><a href="https://github.com/apache/doris/blob/master/fe/fe-core/src/main/java/org/apache/doris/nereids/rules/rewrite/UnCorrelatedApplyAggregateFilter.java">UnCorrelatedApplyAggregateFilter.java</a></li>
+            <li><a href="https://github.com/apache/doris/blob/master/fe/fe-core/src/main/java/org/apache/doris/nereids/rules/rewrite/ScalarApplyToJoin.java">ScalarApplyToJoin.java</a></li>
+            <li><a href="https://github.com/apache/doris/blob/master/fe/fe-core/src/main/java/org/apache/doris/nereids/rules/analysis/SubExprAnalyzer.java">SubExprAnalyzer.java</a></li>
+            <li><a href="https://github.com/apache/doris/blob/master/fe/fe-core/src/main/java/org/apache/doris/nereids/jobs/executor/Rewriter.java">Rewriter.java</a></li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>补充边界</h3>
+          <p>Materialize 的“distinct outer bindings + join-back”与 2015 方案几乎相同，但当前仓库使用 Business Source License 1.1；可读设计，不建议向 Apache Doris 复制实现。CockroachDB、Trino、DataFusion 等存在 decorrelation 规则，但本报告未把它们认定为完整显式 D / 2025 holistic 实现。</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <p><strong>结论：</strong>先提交无行为变化的 unnesting foundation，再以论文 Q2 做显式 D vertical slice；不要把最终架构绑死在单层 ScalarApply pattern 上。</p>
+      <p>报告生成日期：2026-08-25。上游主干会继续变化，实施前应固定 Spark、DuckDB、Calcite 的参考 commit。</p>
+    </div>
+  </footer>
+</body>
+</html>
