@@ -91,6 +91,14 @@ public:
                   std::shared_ptr<io::IOContext> io_ctx_holder = nullptr);
     ~NewJsonReader() override = default;
 
+    // Append a non-null JSON value to a non-nullable column using the load conversion rules.
+    // Strings are unescaped, booleans become 1/0, and other values retain their JSON text.
+    // The caller owns the parser/value lifetime, nullable handling and row-level error policy.
+    // Like the reader's parsing methods, this may throw simdjson::simdjson_error.
+    static Status write_json_value_to_column(simdjson::ondemand::value& value, IColumn& column,
+                                             const DataTypeSerDe& serde,
+                                             const DataTypeSerDe::FormatOptions& options);
+
     Status init_reader(
             const std::unordered_map<std::string, VExprContextSPtr>& col_default_value_ctx,
             bool is_load);

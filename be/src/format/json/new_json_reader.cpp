@@ -1109,6 +1109,33 @@ Status NewJsonReader::_simdjson_set_column_value(simdjson::ondemand::object* val
     return Status::OK();
 }
 
+Status NewJsonReader::write_json_value_to_column(simdjson::ondemand::value& value, IColumn& column,
+                                                 const DataTypeSerDe& serde,
+                                                 const DataTypeSerDe::FormatOptions& options) {
+    DCHECK(!is_column_nullable(column));
+    DCHECK(value.type() != simdjson::ondemand::json_type::null);
+
+    if (value.type() == simdjson::ondemand::json_type::string) {
+        std::string_view value_string = value.get_string();
+        Slice slice {value_string.data(), value_string.size()};
+        return serde.deserialize_one_cell_from_json(column, slice, options);
+    } else if (value.type() == simdjson::ondemand::json_type::boolean) {
+        const char* str_value = nullptr;
+        // Preserve the reader's conversion to 1/0 rather than true/false.
+        if (value.get_bool()) {
+            str_value = "1";
+        } else {
+            str_value = "0";
+        }
+        Slice slice {str_value, 1};
+        return serde.deserialize_one_cell_from_json(column, slice, options);
+    } else {
+        std::string_view json_str = simdjson::to_json_string(value);
+        Slice slice {json_str.data(), json_str.size()};
+        return serde.deserialize_one_cell_from_json(column, slice, options);
+    }
+}
+
 template <bool use_string_cache>
 Status NewJsonReader::_simdjson_write_data_to_column(simdjson::ondemand::value& value,
                                                      const DataTypePtr& type_desc,
@@ -1145,9 +1172,9 @@ Status NewJsonReader::_simdjson_write_data_to_column(simdjson::ondemand::value& 
 
     auto primitive_type = type_desc->get_primitive_type();
     if (_is_load || !is_complex_type(primitive_type)) {
-        if (value.type() == simdjson::ondemand::json_type::string) {
-            std::string_view value_string;
-            if constexpr (use_string_cache) {
+        if constexpr (use_string_cache) {
+            if (value.type() == simdjson::ondemand::json_type::string) {
+                std::string_view value_string;
                 const auto cache_key = value.raw_json().value();
                 if (_cached_string_values.contains(cache_key)) {
                     value_string = _cached_string_values[cache_key];
@@ -1155,33 +1182,20 @@ Status NewJsonReader::_simdjson_write_data_to_column(simdjson::ondemand::value& 
                     value_string = value.get_string();
                     _cached_string_values.emplace(cache_key, value_string);
                 }
-            } else {
-                DCHECK(_cached_string_values.empty());
-                value_string = value.get_string();
-            }
 
-            Slice slice {value_string.data(), value_string.size()};
-            RETURN_IF_ERROR(data_serde->deserialize_one_cell_from_json(*data_column_ptr, slice,
-                                                                       _serde_options));
-
-        } else if (value.type() == simdjson::ondemand::json_type::boolean) {
-            const char* str_value = nullptr;
-            // insert "1"/"0" , not "true"/"false".
-            if (value.get_bool()) {
-                str_value = (char*)"1";
+                Slice slice {value_string.data(), value_string.size()};
+                RETURN_IF_ERROR(data_serde->deserialize_one_cell_from_json(*data_column_ptr, slice,
+                                                                           _serde_options));
             } else {
-                str_value = (char*)"0";
+                RETURN_IF_ERROR(write_json_value_to_column(value, *data_column_ptr, *data_serde,
+                                                           _serde_options));
             }
-            Slice slice {str_value, 1};
-            RETURN_IF_ERROR(data_serde->deserialize_one_cell_from_json(*data_column_ptr, slice,
-                                                                       _serde_options));
         } else {
-            // Maybe we can `switch (value->GetType()) case: kNumberType`.
-            // Note that `if (value->IsInt())`, but column is FloatColumn.
-            std::string_view json_str = simdjson::to_json_string(value);
-            Slice slice {json_str.data(), json_str.size()};
-            RETURN_IF_ERROR(data_serde->deserialize_one_cell_from_json(*data_column_ptr, slice,
-                                                                       _serde_options));
+            if (value.type() == simdjson::ondemand::json_type::string) {
+                DCHECK(_cached_string_values.empty());
+            }
+            RETURN_IF_ERROR(write_json_value_to_column(value, *data_column_ptr, *data_serde,
+                                                       _serde_options));
         }
     } else if (primitive_type == TYPE_STRUCT) {
         if (value.type() != simdjson::ondemand::json_type::object) [[unlikely]] {

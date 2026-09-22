@@ -84,7 +84,9 @@ public:
     // called when producer/consumer failed
     virtual void cancel(const std::string& reason) override;
 
-    Status read_one_message(DorisUniqueBufferPtr<uint8_t>* data, size_t* length);
+    // The optional eof output distinguishes an empty message from a drained, finished stream.
+    Status read_one_message(DorisUniqueBufferPtr<uint8_t>* data, size_t* length,
+                            bool* eof = nullptr);
 
     size_t get_queue_size() { return _buf_queue.size(); }
 
@@ -107,7 +109,7 @@ protected:
 
 private:
     // read the next buffer from _buf_queue
-    Status _read_next_buffer(DorisUniqueBufferPtr<uint8_t>* data, size_t* length);
+    Status _read_next_buffer(DorisUniqueBufferPtr<uint8_t>* data, size_t* length, bool* eof);
 
     Status _append(const ByteBufferPtr& buf, size_t proto_byte_size = 0);
 
